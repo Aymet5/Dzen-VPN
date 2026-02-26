@@ -15,41 +15,55 @@ let cookie = '';
 
 async function login() {
   try {
-    const response = await axios.post(`${PANEL_URL}login`, {
-      username: USERNAME,
-      password: PASSWORD
-    }, {
+    console.log(`[VPN] Attempting login to ${PANEL_URL} with user: ${USERNAME}`);
+    const params = new URLSearchParams();
+    params.append('username', USERNAME!);
+    params.append('password', PASSWORD!);
+
+    const response = await axios.post(`${PANEL_URL}login`, params, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       httpsAgent: agent
     });
     
+    console.log('[VPN] Login response:', response.data);
+    
     if (response.data.success) {
       cookie = response.headers['set-cookie']?.[0] || '';
+      console.log('[VPN] Login successful, cookie obtained');
       return true;
     }
+    console.error('[VPN] Login failed: success is false');
     return false;
-  } catch (error) {
-    console.error('VPN Login Error:', error);
+  } catch (error: any) {
+    console.error('VPN Login Error:', error.message);
+    if (error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', error.response.data);
+    }
     return false;
   }
 }
 
 export async function generateVlessConfig(telegramId: number, username: string | null): Promise<string | null> {
+  console.log(`[VPN] Generating config for user ${telegramId}`);
   if (!cookie) {
     const loggedIn = await login();
-    if (!loggedIn) return null;
+    if (!loggedIn) {
+      console.error('[VPN] Aborting generation: login failed');
+      return null;
+    }
   }
 
   const email = `${username || 'user'}_${telegramId}`;
-  const clientUuid = randomUUID(); // Переименовали здесь
+  const clientUuid = randomUUID();
 
   try {
-    // Add client to 3X-UI
+    console.log(`[VPN] Adding client ${email} to inbound ${INBOUND_ID}...`);
     const response = await axios.post(`${PANEL_URL}panel/api/inbounds/addClient`, {
       id: INBOUND_ID,
       settings: JSON.stringify({
         clients: [{
-          id: clientUuid, // И здесь
+          id: clientUuid,
           flow: "xtls-rprx-vision",
           email: email,
           limitIp: 2,
@@ -65,11 +79,15 @@ export async function generateVlessConfig(telegramId: number, username: string |
       httpsAgent: agent
     });
 
+    console.log('[VPN] Add client response:', response.data);
+
     if (!response.data.success) {
+      console.warn('[VPN] Add client failed, clearing cookie and retrying...');
       cookie = '';
       return generateVlessConfig(telegramId, username);
     }
 
+    console.log('[VPN] Fetching inbound details...');
     const inboundResponse = await axios.get(`${PANEL_URL}panel/api/inbounds/get/${INBOUND_ID}`, {
       headers: { 'Cookie': cookie },
       httpsAgent: agent
@@ -85,7 +103,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
     const port = inbound.port;
     const host = new URL(PANEL_URL!).hostname;
 
-    // И здесь используем clientUuid
+    // Construct VLESS link
     const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&security=reality&sni=${serverName}&fp=chrome&pbk=${publicKey}&sid=${shortId}&flow=xtls-rprx-vision#ZenVPN_${email}`;
     
     return vlessLink;
