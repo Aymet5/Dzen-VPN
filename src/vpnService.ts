@@ -44,7 +44,7 @@ async function login() {
   }
 }
 
-export async function generateVlessConfig(telegramId: number, username: string | null): Promise<string | null> {
+export async function generateVlessConfig(telegramId: number, username: string | null, isRetry = false): Promise<string | null> {
   console.log(`[VPN] Generating config for user ${telegramId}`);
   if (!cookie) {
     const loggedIn = await login();
@@ -55,7 +55,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
   }
 
   const email = `${username || 'user'}_${telegramId}`;
-  const clientUuid = randomUUID();
+  let clientUuid = randomUUID();
 
   try {
     console.log(`[VPN] Adding client ${email} to inbound ${INBOUND_ID}...`);
@@ -81,10 +81,20 @@ export async function generateVlessConfig(telegramId: number, username: string |
 
     console.log('[VPN] Add client response:', response.data);
 
+    let isDuplicate = false;
+
     if (!response.data.success) {
-      console.warn('[VPN] Add client failed, clearing cookie and retrying...');
-      cookie = '';
-      return generateVlessConfig(telegramId, username);
+      if (response.data.msg && response.data.msg.includes('Duplicate email')) {
+        console.log(`[VPN] Client ${email} already exists. Will fetch existing UUID.`);
+        isDuplicate = true;
+      } else if (!isRetry) {
+        console.warn('[VPN] Add client failed, clearing cookie and retrying...');
+        cookie = '';
+        return generateVlessConfig(telegramId, username, true);
+      } else {
+        console.error('[VPN] Add client failed permanently:', response.data.msg);
+        return null;
+      }
     }
 
     console.log('[VPN] Fetching inbound details...');
@@ -94,6 +104,19 @@ export async function generateVlessConfig(telegramId: number, username: string |
     });
 
     const inbound = inboundResponse.data.obj;
+    
+    if (isDuplicate) {
+      const settings = JSON.parse(inbound.settings);
+      const existingClient = settings.clients.find((c: any) => c.email === email);
+      if (existingClient) {
+        clientUuid = existingClient.id;
+        console.log(`[VPN] Found existing UUID: ${clientUuid}`);
+      } else {
+        console.error('[VPN] Could not find existing client in inbound settings');
+        return null;
+      }
+    }
+
     const streamSettings = JSON.parse(inbound.streamSettings);
     const realitySettings = streamSettings.realitySettings;
     
