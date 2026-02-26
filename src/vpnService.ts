@@ -104,15 +104,25 @@ export async function generateVlessConfig(telegramId: number, username: string |
     });
 
     const inbound = inboundResponse.data.obj;
+    if (!inbound) {
+      console.error('[VPN] Inbound object is null in response');
+      return null;
+    }
     
     if (isDuplicate) {
-      const settings = JSON.parse(inbound.settings);
-      const existingClient = settings.clients.find((c: any) => c.email === email);
+      console.log('[VPN] Searching for existing client in settings...');
+      const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
+      console.log(`[VPN] Total clients in inbound: ${settings.clients?.length || 0}`);
+      
+      const existingClient = settings.clients?.find((c: any) => c.email === email);
       if (existingClient) {
         clientUuid = existingClient.id;
         console.log(`[VPN] Found existing UUID: ${clientUuid}`);
       } else {
-        console.error('[VPN] Could not find existing client in inbound settings');
+        console.error(`[VPN] Could not find client with email ${email} in settings.`);
+        if (settings.clients && settings.clients.length > 0) {
+          console.log('[VPN] Available emails:', settings.clients.map((c: any) => c.email).join(', '));
+        }
         return null;
       }
     }
