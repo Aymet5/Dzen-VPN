@@ -64,7 +64,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
           id: clientUuid,
           flow: "xtls-rprx-vision",
           email: email,
-          limitIp: 2,
+          limitIp: 1,
           totalGB: 0,
           expiryTime: 0,
           enable: true,
@@ -153,7 +153,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
     }
 
     // Standard 3X-UI VLESS Reality link format
-    const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&security=reality&fp=chrome&pbk=${publicKey}&sni=${serverName}&sid=${shortId}&flow=xtls-rprx-vision&headerType=none#ZenVPN_${telegramId}`;
+    const vlessLink = `vless://${clientUuid}@${host}:${port}?security=reality&sni=${serverName}&fp=chrome&pbk=${publicKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#ZenVPN_${telegramId}`;
     
     console.log('[VPN] <<< SUCCESS: Config generated');
     console.log('[VPN] Generated Link:', vlessLink);
