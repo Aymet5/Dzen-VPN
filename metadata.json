@@ -1,0 +1,5 @@
+{
+  "name": "ДзенVPN Bot",
+  "description": "Telegram bot for selling VLESS VPN configurations",
+  "requestFramePermissions": []
+}
