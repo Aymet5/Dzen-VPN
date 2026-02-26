@@ -72,7 +72,7 @@ export async function deleteClient(telegramId: number, username: string | null):
   }
 }
 
-export async function generateVlessConfig(telegramId: number, username: string | null): Promise<string | null> {
+export async function generateVlessConfig(telegramId: number, username: string | null, expiryTimestamp: number = 0): Promise<string | null> {
   try {
     if (!cookie) {
       const loggedIn = await login();
@@ -92,7 +92,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
           email: email,
           limitIp: 1,
           totalGB: 0,
-          expiryTime: 0,
+          expiryTime: expiryTimestamp, // Передаем реальную дату
           enable: true,
           tgId: telegramId.toString(),
           subId: ""

@@ -2,7 +2,7 @@ import { Telegraf, Markup } from 'telegraf';
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers } from './db.ts';
 import { generateVlessConfig, deleteClient } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -185,7 +185,8 @@ bot.action('get_vpn', async (ctx) => {
     await ctx.editMessageText('⏳ Генерируем ваш уникальный конфиг...', Markup.inlineKeyboard([]));
     
     try {
-      const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null);
+      const expiryTimestamp = new Date(user.subscription_ends_at).getTime();
+      const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null, expiryTimestamp);
       if (config) {
         updateVpnConfig(ctx.from.id, config);
         await sendVpnConfig(ctx, config);
@@ -206,6 +207,9 @@ bot.action('reset_vpn', async (ctx) => {
   await ctx.editMessageText('⏳ Сбрасываем текущее подключение и генерируем новое...', Markup.inlineKeyboard([]));
   
   try {
+    const user = getUser(ctx.from.id);
+    const expiryTimestamp = user ? new Date(user.subscription_ends_at).getTime() : 0;
+    
     // 1. Delete from panel
     await deleteClient(ctx.from.id, ctx.from.username || null);
     
@@ -213,7 +217,7 @@ bot.action('reset_vpn', async (ctx) => {
     updateVpnConfig(ctx.from.id, null);
     
     // 3. Generate new
-    const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null);
+    const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null, expiryTimestamp);
     if (config) {
       updateVpnConfig(ctx.from.id, config);
       await sendVpnConfig(ctx, config);
