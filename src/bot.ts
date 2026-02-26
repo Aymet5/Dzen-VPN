@@ -1,7 +1,8 @@
 import { Telegraf, Markup } from 'telegraf';
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers } from './db.ts';
+import { generateVlessConfig } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -183,11 +184,21 @@ bot.action('get_vpn', async (ctx) => {
   } else {
     await ctx.editMessageText('⏳ Генерируем ваш уникальный конфиг...', Markup.inlineKeyboard([]));
     
-    // TODO: API Integration
-    await ctx.editMessageText(
-      '⚠️ Интеграция с API еще не настроена. Пожалуйста, предоставьте разработчику (мне) эндпоинты, заголовки и формат тела запроса для генерации VLESS-ссылки.',
-      Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'main_menu')]])
-    );
+    try {
+      const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null);
+      if (config) {
+        updateVpnConfig(ctx.from.id, config);
+        await sendVpnConfig(ctx, config);
+      } else {
+        throw new Error('Failed to generate config');
+      }
+    } catch (error) {
+      console.error('VPN Generation Error:', error);
+      await ctx.editMessageText(
+        '❌ Произошла ошибка при генерации конфига. Пожалуйста, обратитесь в поддержку.',
+        Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'main_menu')]])
+      );
+    }
   }
 });
 
