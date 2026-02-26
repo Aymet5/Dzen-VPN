@@ -41,7 +41,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
   }
 
   const email = `${username || 'user'}_${telegramId}`;
-  const uuid = randomUUID();
+  const clientUuid = randomUUID();
 
   try {
     // Add client to 3X-UI
@@ -49,7 +49,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
       id: INBOUND_ID,
       settings: JSON.stringify({
         clients: [{
-          id: uuid,
+          id: clientUuid,
           flow: "xtls-rprx-vision",
           email: email,
           limitIp: 2,
@@ -88,7 +88,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
     const host = new URL(PANEL_URL!).hostname;
 
     // Construct VLESS link
-    const vlessLink = `vless://${uuid}@${host}:${port}?type=tcp&security=reality&sni=${serverName}&fp=chrome&pbk=${publicKey}&sid=${shortId}&flow=xtls-rprx-vision#ZenVPN_${email}`;
+    const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&security=reality&sni=${serverName}&fp=chrome&pbk=${publicKey}&sid=${shortId}&flow=xtls-rprx-vision#ZenVPN_${email}`;
     
     return vlessLink;
   } catch (error) {
