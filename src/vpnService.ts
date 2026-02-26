@@ -25,21 +25,15 @@ async function login() {
       httpsAgent: agent
     });
     
-    console.log('[VPN] Login response:', response.data);
-    
     if (response.data.success) {
       cookie = response.headers['set-cookie']?.[0] || '';
-      console.log('[VPN] Login successful, cookie obtained');
+      console.log('[VPN] Login successful');
       return true;
     }
-    console.error('[VPN] Login failed: success is false');
+    console.error('[VPN] Login failed:', response.data.msg);
     return false;
   } catch (error: any) {
     console.error('VPN Login Error:', error.message);
-    if (error.response) {
-      console.error('Status:', error.response.status);
-      console.error('Data:', error.response.data);
-    }
     return false;
   }
 }
@@ -48,17 +42,13 @@ export async function generateVlessConfig(telegramId: number, username: string |
   console.log(`[VPN] Generating config for user ${telegramId}`);
   if (!cookie) {
     const loggedIn = await login();
-    if (!loggedIn) {
-      console.error('[VPN] Aborting generation: login failed');
-      return null;
-    }
+    if (!loggedIn) return null;
   }
 
   const email = `${username || 'user'}_${telegramId}`;
   let clientUuid = randomUUID();
 
   try {
-    console.log(`[VPN] Adding client ${email} to inbound ${INBOUND_ID}...`);
     const response = await axios.post(`${PANEL_URL}panel/api/inbounds/addClient`, {
       id: INBOUND_ID,
       settings: JSON.stringify({
@@ -79,69 +69,57 @@ export async function generateVlessConfig(telegramId: number, username: string |
       httpsAgent: agent
     });
 
-    console.log('[VPN] Add client response:', response.data);
-
     let isDuplicate = false;
-
     if (!response.data.success) {
       if (response.data.msg && response.data.msg.includes('Duplicate email')) {
-        console.log(`[VPN] Client ${email} already exists. Will fetch existing UUID.`);
         isDuplicate = true;
       } else if (!isRetry) {
-        console.warn('[VPN] Add client failed, clearing cookie and retrying...');
         cookie = '';
         return generateVlessConfig(telegramId, username, true);
       } else {
-        console.error('[VPN] Add client failed permanently:', response.data.msg);
+        console.error('[VPN] Add client failed:', response.data.msg);
         return null;
       }
     }
 
-    console.log('[VPN] Fetching inbound details...');
     const inboundResponse = await axios.get(`${PANEL_URL}panel/api/inbounds/get/${INBOUND_ID}`, {
       headers: { 'Cookie': cookie },
       httpsAgent: agent
     });
 
     const inbound = inboundResponse.data.obj;
-    if (!inbound) {
-      console.error('[VPN] Inbound object is null in response');
-      return null;
-    }
+    if (!inbound) return null;
     
     if (isDuplicate) {
-      console.log('[VPN] Searching for existing client in settings...');
       const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
-      console.log(`[VPN] Total clients in inbound: ${settings.clients?.length || 0}`);
-      
       const existingClient = settings.clients?.find((c: any) => c.email === email);
       if (existingClient) {
         clientUuid = existingClient.id;
-        console.log(`[VPN] Found existing UUID: ${clientUuid}`);
       } else {
-        console.error(`[VPN] Could not find client with email ${email} in settings.`);
-        if (settings.clients && settings.clients.length > 0) {
-          console.log('[VPN] Available emails:', settings.clients.map((c: any) => c.email).join(', '));
-        }
         return null;
       }
     }
 
-    const streamSettings = JSON.parse(inbound.streamSettings);
+    const streamSettings = typeof inbound.streamSettings === 'string' ? JSON.parse(inbound.streamSettings) : inbound.streamSettings;
     const realitySettings = streamSettings.realitySettings;
     
+    if (!realitySettings) {
+      console.error('[VPN] Reality settings not found in inbound!');
+      return null;
+    }
+
     const serverName = realitySettings.serverNames[0];
     const publicKey = realitySettings.publicKey;
     const shortId = realitySettings.shortIds[0];
     const port = inbound.port;
     const host = new URL(PANEL_URL!).hostname;
 
-    // Construct VLESS link
     const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&security=reality&sni=${serverName}&fp=chrome&pbk=${publicKey}&sid=${shortId}&flow=xtls-rprx-vision#ZenVPN_${email}`;
     
+    console.log('[VPN] Config generated successfully');
     return vlessLink;
-  } catch (error) {
-    console.error('Generate VLESS Error:', error);
+  } catch (error: any) {
+    console.error('Generate VLESS Error:', error.message);
     return null;
   }
 }
