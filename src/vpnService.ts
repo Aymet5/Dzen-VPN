@@ -94,31 +94,27 @@ export async function generateVlessConfig(telegramId: number, username: string |
 
     const streamSettings = typeof inbound.streamSettings === 'string' ? JSON.parse(inbound.streamSettings) : inbound.streamSettings;
     
-    // Умный поиск настроек Reality
-    const realitySettings = streamSettings?.realitySettings || streamSettings?.settings?.realitySettings;
-    
-    if (!realitySettings) {
-      console.error('[VPN] Reality settings not found in panel response');
-      return null;
-    }
+    // ГЛУБОКИЙ ПОИСК ПАРАМЕТРОВ REALITY
+    const reality = streamSettings?.realitySettings || streamSettings?.settings?.realitySettings || {};
+    const realityInner = reality.settings || {};
 
-    // Умный поиск публичного ключа
-    const publicKey = realitySettings.publicKey || realitySettings.settings?.publicKey;
-    const shortId = realitySettings.shortIds?.[0] || realitySettings.settings?.shortIds?.[0] || '';
-    const serverName = realitySettings.serverNames?.[0] || realitySettings.settings?.serverNames?.[0] || 'google.com';
-    
+    const publicKey = reality.publicKey || realityInner.publicKey;
+    const shortId = reality.shortIds?.[0] || realityInner.shortIds?.[0] || '';
+    const serverName = reality.serverNames?.[0] || realityInner.serverNames?.[0] || 'google.com';
+    const spiderX = reality.spiderX || realityInner.spiderX || '%2F';
+
     if (!publicKey) {
-      console.error('[VPN] Public Key (pbk) is missing in Reality settings!');
+      console.error('[VPN] ERROR: Public Key (pbk) not found! Reality settings:', JSON.stringify(reality));
       return null;
     }
 
     const port = inbound.port;
     const host = new URL(PANEL_URL).hostname;
 
-    // Формируем ссылку БЕЗ flow, так как у тебя порт 8080
-    const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&encryption=none&security=reality&pbk=${publicKey}&fp=chrome&sni=${serverName}&sid=${shortId}&spx=%2F#ZenVPN_${email}`;
+    // Ссылка в точности как в твоем рабочем примере
+    const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&encryption=none&security=reality&pbk=${publicKey}&fp=chrome&sni=${serverName}&sid=${shortId}&spx=${encodeURIComponent(spiderX)}#ZenVPN_${email}`;
     
-    console.log('[VPN] Success! Link generated.');
+    console.log('[VPN] Success! Generated Link:', vlessLink);
     return vlessLink;
 
   } catch (error: any) {
