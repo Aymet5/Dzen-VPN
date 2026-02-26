@@ -41,7 +41,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
   }
 
   const email = `${username || 'user'}_${telegramId}`;
-  const clientUuid = randomUUID();
+  const clientUuid = randomUUID(); // Переименовали здесь
 
   try {
     // Add client to 3X-UI
@@ -49,7 +49,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
       id: INBOUND_ID,
       settings: JSON.stringify({
         clients: [{
-          id: clientUuid,
+          id: clientUuid, // И здесь
           flow: "xtls-rprx-vision",
           email: email,
           limitIp: 2,
@@ -66,12 +66,10 @@ export async function generateVlessConfig(telegramId: number, username: string |
     });
 
     if (!response.data.success) {
-      // If cookie expired, retry once
       cookie = '';
       return generateVlessConfig(telegramId, username);
     }
 
-    // Get Inbound details to construct the link
     const inboundResponse = await axios.get(`${PANEL_URL}panel/api/inbounds/get/${INBOUND_ID}`, {
       headers: { 'Cookie': cookie },
       httpsAgent: agent
@@ -87,7 +85,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
     const port = inbound.port;
     const host = new URL(PANEL_URL!).hostname;
 
-    // Construct VLESS link
+    // И здесь используем clientUuid
     const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&security=reality&sni=${serverName}&fp=chrome&pbk=${publicKey}&sid=${shortId}&flow=xtls-rprx-vision#ZenVPN_${email}`;
     
     return vlessLink;
