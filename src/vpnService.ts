@@ -93,20 +93,29 @@ export async function generateVlessConfig(telegramId: number, username: string |
     }
 
     const streamSettings = typeof inbound.streamSettings === 'string' ? JSON.parse(inbound.streamSettings) : inbound.streamSettings;
+    
+    // Умный поиск настроек Reality
     const realitySettings = streamSettings?.realitySettings || streamSettings?.settings?.realitySettings;
     
     if (!realitySettings) {
-      console.error('[VPN] Reality settings not found');
+      console.error('[VPN] Reality settings not found in panel response');
       return null;
     }
 
-    const serverName = realitySettings.serverNames?.[0] || 'google.com';
+    // Умный поиск публичного ключа
     const publicKey = realitySettings.publicKey || realitySettings.settings?.publicKey;
-    const shortId = realitySettings.shortIds?.[0] || '';
+    const shortId = realitySettings.shortIds?.[0] || realitySettings.settings?.shortIds?.[0] || '';
+    const serverName = realitySettings.serverNames?.[0] || realitySettings.settings?.serverNames?.[0] || 'google.com';
+    
+    if (!publicKey) {
+      console.error('[VPN] Public Key (pbk) is missing in Reality settings!');
+      return null;
+    }
+
     const port = inbound.port;
     const host = new URL(PANEL_URL).hostname;
 
-    // EXACT MATCH with your working example
+    // Формируем ссылку БЕЗ flow, так как у тебя порт 8080
     const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&encryption=none&security=reality&pbk=${publicKey}&fp=chrome&sni=${serverName}&sid=${shortId}&spx=%2F#ZenVPN_${email}`;
     
     console.log('[VPN] Success! Link generated.');
