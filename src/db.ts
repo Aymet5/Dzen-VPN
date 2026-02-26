@@ -57,7 +57,7 @@ export function updateSubscription(telegramId: number, monthsToAdd: number, star
     .run(baseDate.toISOString(), starsSpent, telegramId);
 }
 
-export function updateVpnConfig(telegramId: number, config: string) {
+export function updateVpnConfig(telegramId: number, config: string | null) {
   db.prepare('UPDATE users SET vpn_config = ? WHERE telegram_id = ?')
     .run(config, telegramId);
 }

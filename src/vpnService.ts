@@ -36,6 +36,42 @@ async function login() {
   }
 }
 
+export async function deleteClient(telegramId: number, username: string | null): Promise<boolean> {
+  if (!cookie) {
+    const loggedIn = await login();
+    if (!loggedIn) return false;
+  }
+
+  const email = `${username || 'user'}_${telegramId}`;
+
+  try {
+    // First find the client UUID
+    const inboundResponse = await axios.get(`${PANEL_URL}panel/api/inbounds/get/${INBOUND_ID}`, {
+      headers: { 'Cookie': cookie },
+      httpsAgent: agent
+    });
+
+    const inbound = inboundResponse.data.obj;
+    if (!inbound) return false;
+
+    const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
+    const client = settings.clients?.find((c: any) => c.email === email);
+    
+    if (!client) return true; // Already deleted
+
+    // Delete the client
+    const response = await axios.post(`${PANEL_URL}panel/api/inbounds/${INBOUND_ID}/delClient/${client.id}`, {}, {
+      headers: { 'Cookie': cookie },
+      httpsAgent: agent
+    });
+
+    return response.data.success;
+  } catch (error: any) {
+    console.error('[VPN] Delete Client Error:', error.message);
+    return false;
+  }
+}
+
 export async function generateVlessConfig(telegramId: number, username: string | null): Promise<string | null> {
   try {
     if (!cookie) {
@@ -94,11 +130,11 @@ export async function generateVlessConfig(telegramId: number, username: string |
 
     const streamSettings = typeof inbound.streamSettings === 'string' ? JSON.parse(inbound.streamSettings) : inbound.streamSettings;
     
-    // ГЛУБОКИЙ ПОИСК ПАРАМЕТРОВ REALITY
+    // Robust Reality settings extraction
     const reality = streamSettings?.realitySettings || streamSettings?.settings?.realitySettings || {};
     const realityInner = reality.settings || {};
 
-    const publicKey = reality.publicKey || realityInner.publicKey;
+    const publicKey = reality.publicKey || realityInner.publicKey || process.env.VPN_PUBLIC_KEY;
     const shortId = reality.shortIds?.[0] || realityInner.shortIds?.[0] || '';
     const serverName = reality.serverNames?.[0] || realityInner.serverNames?.[0] || 'google.com';
     const spiderX = reality.spiderX || realityInner.spiderX || '%2F';
@@ -111,7 +147,6 @@ export async function generateVlessConfig(telegramId: number, username: string |
     const port = inbound.port;
     const host = new URL(PANEL_URL).hostname;
 
-    // Ссылка в точности как в твоем рабочем примере
     const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&encryption=none&security=reality&pbk=${publicKey}&fp=chrome&sni=${serverName}&sid=${shortId}&spx=${encodeURIComponent(spiderX)}#ZenVPN_${email}`;
     
     console.log('[VPN] Success! Generated Link:', vlessLink);

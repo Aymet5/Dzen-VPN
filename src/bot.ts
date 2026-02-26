@@ -1,8 +1,8 @@
 import { Telegraf, Markup } from 'telegraf';
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers } from './db.ts';
-import { generateVlessConfig } from './vpnService.ts';
+import { generateVlessConfig, deleteClient } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -202,6 +202,31 @@ bot.action('get_vpn', async (ctx) => {
   }
 });
 
+bot.action('reset_vpn', async (ctx) => {
+  await ctx.editMessageText('⏳ Сбрасываем текущее подключение и генерируем новое...', Markup.inlineKeyboard([]));
+  
+  try {
+    // 1. Delete from panel
+    await deleteClient(ctx.from.id, ctx.from.username || null);
+    
+    // 2. Clear in DB
+    updateVpnConfig(ctx.from.id, null);
+    
+    // 3. Generate new
+    const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null);
+    if (config) {
+      updateVpnConfig(ctx.from.id, config);
+      await sendVpnConfig(ctx, config);
+    } else {
+      throw new Error('Failed to generate new config');
+    }
+  } catch (error) {
+    console.error('VPN Reset Error:', error);
+    await ctx.answerCbQuery('❌ Ошибка при обновлении. Попробуйте позже.', { show_alert: true });
+    await sendMainMenu(ctx, false);
+  }
+});
+
 bot.action('how_to', async (ctx) => {
   const text = `📖 *Как подключить ДзенVPN?*
 
@@ -304,6 +329,7 @@ _(Нажмите на код выше, чтобы скопировать)_
     parse_mode: 'Markdown',
     link_preview_options: { is_disabled: true },
     ...Markup.inlineKeyboard([
+      [Markup.button.callback('🔄 Обновить подключение', 'reset_vpn')],
       [Markup.button.callback('📖 Подробная инструкция', 'how_to')],
       [Markup.button.callback('⬅️ Назад', 'main_menu')]
     ])
