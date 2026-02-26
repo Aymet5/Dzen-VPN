@@ -152,8 +152,8 @@ export async function generateVlessConfig(telegramId: number, username: string |
         console.error('[VPN] Invalid PANEL_URL format');
     }
 
-    // Standard 3X-UI VLESS Reality link format
-    const vlessLink = `vless://${clientUuid}@${host}:${port}?security=reality&sni=${serverName}&fp=chrome&pbk=${publicKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#ZenVPN_${telegramId}`;
+    // Standard 3X-UI VLESS Reality link format (Matched with user's working example)
+    const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&encryption=none&security=reality&pbk=${publicKey}&fp=chrome&sni=${serverName}&sid=${shortId}&spx=%2F#ZenVPN_${email}`;
     
     console.log('[VPN] <<< SUCCESS: Config generated');
     console.log('[VPN] Generated Link:', vlessLink);
