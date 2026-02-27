@@ -2,7 +2,7 @@ import { Telegraf, Markup } from 'telegraf';
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers } from './db.ts';
 import { generateVlessConfig, deleteClient } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -25,6 +25,15 @@ async function sendMainMenu(ctx: any, edit = false) {
     await ctx.reply(text, MAIN_MENU);
   }
 }
+
+const YOOKASSA_PROVIDER_TOKEN = process.env.YOOKASSA_PROVIDER_TOKEN || '';
+
+const SUBSCRIPTION_PLANS = [
+  { id: '1', label: '1 месяц', months: 1, price: 99, description: 'Базовый доступ на 30 дней' },
+  { id: '3', label: '3 месяца', months: 3, price: 249, description: 'Экономия 15% - Квартальный доступ' },
+  { id: '6', label: '6 месяцев', months: 6, price: 449, description: 'Экономия 25% - Полгода свободы' },
+  { id: '12', label: '12 месяцев', months: 12, price: 799, description: 'Экономия 33% - Целый год без границ' },
+];
 
 bot.start(async (ctx) => {
   const tgId = ctx.from.id;
@@ -61,14 +70,14 @@ bot.command('admin', async (ctx) => {
     const statusIcon = isActive ? '✅' : '❌';
     const premiumIcon = u.total_spent > 0 ? '💎' : '🆓';
     
-    return `${premiumIcon} ID: ${u.telegram_id} | @${u.username || 'no_name'}\n   └ До: ${endsAt.toLocaleDateString('ru-RU')} ${statusIcon} | Потрачено: ${u.total_spent} ⭐️`;
+    return `${premiumIcon} ID: ${u.telegram_id} | @${u.username || 'no_name'}\n   └ До: ${endsAt.toLocaleDateString('ru-RU')} ${statusIcon} | Потрачено: ${u.total_spent} ₽`;
   }).join('\n\n');
 
   const statsText = `📊 *Админ-панель ДзенVPN*
 
 Всего пользователей: ${totalUsers}
 Активных подписок: ${activeSubs}
-Общая выручка: ${totalRevenue} ⭐️
+Общая выручка: ${totalRevenue} ₽
 
 *Список пользователей:*
 ${userList || 'Пользователей пока нет'}`;
@@ -108,42 +117,43 @@ bot.action('my_sub', async (ctx) => {
 });
 
 bot.action('buy_sub', async (ctx) => {
-  const text = `💳 *Купить подписку*\n\nКак купить Telegram Stars? Оплатить можно банковской картой прямо в Telegram при покупке. Звезды зачислятся моментально.\n\nВыберите тариф:`;
+  const text = `💳 *Выберите тарифный план:*
+
+Мы подготовили для вас самые выгодные условия. Чем дольше период, тем дешевле обходится месяц!`;
   
+  const buttons = SUBSCRIPTION_PLANS.map(plan => [
+    Markup.button.callback(`${plan.label} — ${plan.price} ₽`, `buy_${plan.id}`)
+  ]);
+  buttons.push([Markup.button.callback('⬅️ Назад', 'main_menu')]);
+
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('1 Месяц - 100 ⭐️', 'buy_1')],
-      [Markup.button.callback('6 Месяцев - 500 ⭐️', 'buy_6')],
-      [Markup.button.callback('1 Год - 900 ⭐️', 'buy_12')],
-      [Markup.button.callback('⬅️ Назад', 'main_menu')]
-    ])
+    ...Markup.inlineKeyboard(buttons)
   });
 });
 
 bot.action(/^buy_(\d+)$/, async (ctx) => {
-  const months = parseInt(ctx.match[1]);
-  let amount = 0;
-  let title = '';
+  const planId = ctx.match[1];
+  const plan = SUBSCRIPTION_PLANS.find(p => p.id === planId);
   
-  if (months === 1) { amount = 100; title = 'Подписка на 1 месяц'; }
-  else if (months === 6) { amount = 500; title = 'Подписка на 6 месяцев'; }
-  else if (months === 12) { amount = 900; title = 'Подписка на 1 год'; }
-  else return;
+  if (!plan) return;
+
+  if (!YOOKASSA_PROVIDER_TOKEN) {
+    await ctx.answerCbQuery('❌ Ошибка: Платежная система не настроена.', { show_alert: true });
+    return;
+  }
 
   await ctx.deleteMessage().catch(() => {});
   
   await ctx.replyWithInvoice({
-    title: title,
-    description: `Оплата подписки ДзенVPN на ${months} мес.`,
-    payload: `sub_${months}_${ctx.from.id}`,
-    provider_token: '', // Empty for Telegram Stars
-    currency: 'XTR',
-    prices: [{ label: title, amount: amount }]
-  }, Markup.inlineKeyboard([
-    [Markup.button.pay(`Оплатить ${amount} ⭐️`)],
-    [Markup.button.callback('Отмена', 'main_menu')]
-  ]));
+    title: `ДзенVPN: ${plan.label}`,
+    description: plan.description,
+    payload: `sub_${plan.id}_${ctx.from.id}`,
+    provider_token: YOOKASSA_PROVIDER_TOKEN,
+    currency: 'RUB',
+    prices: [{ label: plan.label, amount: plan.price * 100 }], // Amount in kopecks
+    start_parameter: `sub_${plan.id}`,
+  });
 });
 
 bot.on('pre_checkout_query', async (ctx) => {
@@ -152,15 +162,21 @@ bot.on('pre_checkout_query', async (ctx) => {
 
 bot.on('successful_payment', async (ctx) => {
   const payload = ctx.message.successful_payment.invoice_payload;
-  const amount = ctx.message.successful_payment.total_amount; // Stars amount
-  const match = payload.match(/^sub_(\d+)_(\d+)$/);
-  if (match) {
-    const months = parseInt(match[1]);
-    const tgId = parseInt(match[2]);
-    updateSubscription(tgId, months, amount);
+  const amount = ctx.message.successful_payment.total_amount / 100;
+  const parts = payload.split('_');
+  const planId = parts[1];
+  const plan = SUBSCRIPTION_PLANS.find(p => p.id === planId);
+
+  if (plan) {
+    updateSubscription(ctx.from.id, plan.months, amount);
     
-    await ctx.reply(`✅ Оплата прошла успешно! Ваша подписка продлена на ${months} мес.`);
-    await sendMainMenu(ctx, false);
+    await ctx.reply(`🎉 *Оплата прошла успешно!*
+
+Ваша подписка продлена на *${plan.label}*. 
+Теперь вы можете получить или обновить свой VPN-конфиг в главном меню.`, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([[Markup.button.callback('🚀 Начать пользоваться', 'main_menu')]])
+    });
   }
 });
 
@@ -249,28 +265,29 @@ bot.action('how_to', async (ctx) => {
 bot.action('how_android', async (ctx) => {
   const text = `🤖 *Инструкция для Android*
 
-1. Скачайте приложение [v2rayNG](https://play.google.com/store/apps/details?id=com.v2ray.ang).
+1. Скачайте приложение *Happ Proxy* по кнопке ниже.
 2. Скопируйте ваш ключ (VLESS-ссылку) из раздела "🚀 Получить VPN".
-3. Откройте v2rayNG и нажмите на иконку *"+"* в правом верхнем углу.
-4. Выберите *"Import config from clipboard"*.
-5. Нажмите на добавленный профиль (он станет серым/выделенным).
-6. Нажмите на круглую кнопку с иконкой *V* внизу для подключения.
-7. При первом запуске разрешите создание VPN-соединения.
+3. Откройте приложение и добавьте конфиг через иконку *"+"* или *"Import"*.
+4. Нажмите на добавленный профиль и кнопку подключения.
+5. При первом запуске разрешите создание VPN-соединения.
 
 ✅ *Готово!*`;
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
     link_preview_options: { is_disabled: true },
-    ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'how_to')]])
+    ...Markup.inlineKeyboard([
+      [Markup.button.url('📥 Скачать Happ Proxy (Play Store)', 'https://play.google.com/store/apps/details?id=com.happproxy')],
+      [Markup.button.callback('⬅️ Назад', 'how_to')]
+    ])
   });
 });
 
 bot.action('how_ios', async (ctx) => {
   const text = `🍏 *Инструкция для iOS (iPhone/iPad)*
 
-1. Установите [V2Ray Tun](https://apps.apple.com/us/app/v2ray-tun/id1466598387) или [Streisand](https://apps.apple.com/us/app/streisand/id6450534064).
+1. Установите приложение *Happ Proxy* по кнопке ниже.
 2. Скопируйте ваш ключ (VLESS-ссылку).
-3. В приложении (например, Streisand) нажмите *"+"* -> *"Import from Clipboard"*.
+3. В приложении нажмите *"+"* -> *"Import from Clipboard"*.
 4. Выберите добавленный сервер и нажмите кнопку подключения (Connect).
 5. Разрешите добавление конфигурации VPN в настройках iPhone.
 
@@ -278,7 +295,10 @@ bot.action('how_ios', async (ctx) => {
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
     link_preview_options: { is_disabled: true },
-    ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'how_to')]])
+    ...Markup.inlineKeyboard([
+      [Markup.button.url('📥 Скачать Happ Proxy (App Store)', 'https://apps.apple.com/us/app/happ-proxy-utility/id6504287215')],
+      [Markup.button.callback('⬅️ Назад', 'how_to')]
+    ])
   });
 });
 

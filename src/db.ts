@@ -43,7 +43,7 @@ export function createUser(telegramId: number, username: string | null): User {
   return getUser(telegramId)!;
 }
 
-export function updateSubscription(telegramId: number, monthsToAdd: number, starsSpent: number) {
+export function updateSubscription(telegramId: number, monthsToAdd: number, amountPaid: number) {
   const user = getUser(telegramId);
   if (!user) return;
 
@@ -54,7 +54,7 @@ export function updateSubscription(telegramId: number, monthsToAdd: number, star
   baseDate.setMonth(baseDate.getMonth() + monthsToAdd);
   
   db.prepare('UPDATE users SET subscription_ends_at = ?, total_spent = total_spent + ? WHERE telegram_id = ?')
-    .run(baseDate.toISOString(), starsSpent, telegramId);
+    .run(baseDate.toISOString(), amountPaid, telegramId);
 }
 
 export function updateVpnConfig(telegramId: number, config: string | null) {
