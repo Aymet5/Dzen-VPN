@@ -1,8 +1,8 @@
 import { Telegraf, Markup } from 'telegraf';
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers } from './db.ts';
-import { generateVlessConfig, deleteClient } from './vpnService.ts';
+import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -169,6 +169,13 @@ bot.on('successful_payment', async (ctx) => {
 
   if (plan) {
     updateSubscription(ctx.from.id, plan.months, amount);
+    
+    // Sync with panel immediately
+    const user = getUser(ctx.from.id);
+    if (user && user.vpn_config) {
+      const expiryTimestamp = new Date(user.subscription_ends_at).getTime();
+      await updateClientExpiry(ctx.from.id, ctx.from.username || null, expiryTimestamp);
+    }
     
     await ctx.reply(`🎉 *Оплата прошла успешно!*
 

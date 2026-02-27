@@ -72,6 +72,49 @@ export async function deleteClient(telegramId: number, username: string | null):
   }
 }
 
+export async function updateClientExpiry(telegramId: number, username: string | null, expiryTimestamp: number): Promise<boolean> {
+  if (!cookie) {
+    const loggedIn = await login();
+    if (!loggedIn) return false;
+  }
+
+  const email = `${username || 'user'}_${telegramId}`;
+
+  try {
+    const inboundResponse = await axios.get(`${PANEL_URL}panel/api/inbounds/get/${INBOUND_ID}`, {
+      headers: { 'Cookie': cookie },
+      httpsAgent: agent
+    });
+
+    const inbound = inboundResponse.data.obj;
+    if (!inbound) return false;
+
+    const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
+    const client = settings.clients?.find((c: any) => c.email === email);
+    
+    if (!client) return false;
+
+    // Update the client expiry time
+    const response = await axios.post(`${PANEL_URL}panel/api/inbounds/updateClient/${client.id}`, {
+      id: INBOUND_ID,
+      settings: JSON.stringify({
+        clients: [{
+          ...client,
+          expiryTime: expiryTimestamp
+        }]
+      })
+    }, {
+      headers: { 'Cookie': cookie },
+      httpsAgent: agent
+    });
+
+    return response.data.success;
+  } catch (error: any) {
+    console.error('[VPN] Update Client Expiry Error:', error.message);
+    return false;
+  }
+}
+
 export async function generateVlessConfig(telegramId: number, username: string | null, expiryTimestamp: number = 0): Promise<string | null> {
   try {
     if (!cookie) {
