@@ -1,8 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
-import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers } from './db.ts';
+import { createYookassaPayment } from './yookassaService.ts';
+import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -158,26 +159,48 @@ bot.action(/^buy_(test_)?(\d+)$/, async (ctx) => {
   
   if (!plan) return;
 
-  const token = isTest ? TEST_YOOKASSA_TOKEN : YOOKASSA_PROVIDER_TOKEN;
-
-  if (!token) {
-    await ctx.answerCbQuery('❌ Ошибка: Платежная система не настроена.', { show_alert: true });
+  if (isTest) {
+    // Keep old test logic for admin testing if needed, or just use real API with test keys
+    const token = TEST_YOOKASSA_TOKEN;
+    if (!token) {
+      await ctx.answerCbQuery('❌ Ошибка: Тестовая система не настроена.', { show_alert: true });
+      return;
+    }
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.replyWithInvoice({
+      title: `ДзенVPN: ${plan.label} (TEST)`,
+      description: plan.description,
+      payload: `sub_${plan.id}_${ctx.from.id}`,
+      provider_token: token,
+      currency: 'RUB',
+      prices: [{ label: plan.label, amount: plan.price * 100 }],
+      start_parameter: `sub_${plan.id}`,
+    });
     return;
   }
 
-  await ctx.deleteMessage().catch(() => {});
-  
-  await ctx.replyWithInvoice({
-    title: `ДзенVPN: ${plan.label}${isTest ? ' (TEST)' : ''}`,
-    description: plan.description,
-    payload: `sub_${plan.id}_${ctx.from.id}`,
-    provider_token: token,
-    currency: 'RUB',
-    prices: [{ label: plan.label, amount: plan.price * 100 }], // Amount in kopecks
-    start_parameter: `sub_${plan.id}`,
-  });
+  try {
+    const payment = await createYookassaPayment(plan.price, `Подписка ДзенVPN: ${plan.label}`, {
+      telegram_id: ctx.from.id,
+      plan_id: plan.id
+    });
+
+    createPendingPayment(payment.id, ctx.from.id, plan.id, plan.price);
+
+    await ctx.editMessageText(`💳 *Оплата подписки: ${plan.label}*\n\nСумма к оплате: *${plan.price} ₽*\n\nНажмите кнопку ниже, чтобы перейти к оплате. После успешной оплаты подписка продлится автоматически.`, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.url('💳 Перейти к оплате (СБП, Карты)', payment.confirmation.confirmation_url)],
+        [Markup.button.callback('⬅️ Назад', 'buy_sub')]
+      ])
+    });
+  } catch (error) {
+    console.error('Payment Creation Error:', error);
+    await ctx.answerCbQuery('❌ Ошибка при создании платежа. Попробуйте позже.', { show_alert: true });
+  }
 });
 
+// Note: pre_checkout_query and successful_payment are still kept for the TEST invoice flow
 bot.on('pre_checkout_query', async (ctx) => {
   await ctx.answerPreCheckoutQuery(true);
 });

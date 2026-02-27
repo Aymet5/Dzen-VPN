@@ -13,7 +13,16 @@ db.exec(`
     subscription_ends_at DATETIME,
     vpn_config TEXT,
     total_spent INTEGER DEFAULT 0
-  )
+  );
+
+  CREATE TABLE IF NOT EXISTS pending_payments (
+    id TEXT PRIMARY KEY,
+    telegram_id INTEGER,
+    plan_id TEXT,
+    amount INTEGER,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT
+  );
 `);
 
 export interface User {
@@ -55,6 +64,19 @@ export function updateSubscription(telegramId: number, monthsToAdd: number, amou
   
   db.prepare('UPDATE users SET subscription_ends_at = ?, total_spent = total_spent + ? WHERE telegram_id = ?')
     .run(baseDate.toISOString(), amountPaid, telegramId);
+}
+
+export function createPendingPayment(id: string, telegramId: number, planId: string, amount: number) {
+  db.prepare('INSERT INTO pending_payments (id, telegram_id, plan_id, amount, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(id, telegramId, planId, amount, new Date().toISOString());
+}
+
+export function getPendingPayment(id: string) {
+  return db.prepare('SELECT * FROM pending_payments WHERE id = ?').get(id) as any;
+}
+
+export function updatePaymentStatus(id: string, status: string) {
+  db.prepare('UPDATE pending_payments SET status = ? WHERE id = ?').run(status, id);
 }
 
 export function updateVpnConfig(telegramId: number, config: string | null) {
