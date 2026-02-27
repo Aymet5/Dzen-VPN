@@ -1,9 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
-import { createYookassaPayment } from './yookassaService.ts';
-import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment } from './db.ts';
+import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaService.ts';
+import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -187,16 +187,68 @@ bot.action(/^buy_(test_)?(\d+)$/, async (ctx) => {
 
     createPendingPayment(payment.id, ctx.from.id, plan.id, plan.price);
 
-    await ctx.editMessageText(`💳 *Оплата подписки: ${plan.label}*\n\nСумма к оплате: *${plan.price} ₽*\n\nНажмите кнопку ниже, чтобы перейти к оплате. После успешной оплаты подписка продлится автоматически.`, {
+    await ctx.editMessageText(`💳 *Оплата подписки: ${plan.label}*\n\nСумма к оплате: *${plan.price} ₽*\n\n1. Нажмите кнопку «Перейти к оплате».\n2. Совершите платеж удобным способом (СБП, Карта).\n3. После оплаты вернитесь сюда и нажмите «✅ Я оплатил».\n\n_Подписка продлится автоматически после проверки._`, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.url('💳 Перейти к оплате (СБП, Карты)', payment.confirmation.confirmation_url)],
+        [Markup.button.url('💳 Перейти к оплате', payment.confirmation.confirmation_url)],
+        [Markup.button.callback('✅ Я оплатил', `check_pay_${payment.id}`)],
         [Markup.button.callback('⬅️ Назад', 'buy_sub')]
       ])
     });
   } catch (error) {
     console.error('Payment Creation Error:', error);
     await ctx.answerCbQuery('❌ Ошибка при создании платежа. Попробуйте позже.', { show_alert: true });
+  }
+});
+
+bot.action(/^check_pay_(.+)$/, async (ctx) => {
+  const paymentId = ctx.match[1];
+  const pending = getPendingPayment(paymentId);
+
+  if (!pending) {
+    await ctx.answerCbQuery('❌ Платеж не найден.', { show_alert: true });
+    return;
+  }
+
+  if (pending.status === 'succeeded') {
+    await ctx.answerCbQuery('✅ Этот платеж уже зачислен!', { show_alert: true });
+    return;
+  }
+
+  try {
+    const payment = await getYookassaPaymentStatus(paymentId);
+    
+    if (payment.status === 'succeeded') {
+      updatePaymentStatus(paymentId, 'succeeded');
+      
+      const SUBSCRIPTION_PLANS = [
+        { id: '1', months: 1 },
+        { id: '3', months: 3 },
+        { id: '6', months: 6 },
+        { id: '12', months: 12 },
+      ];
+      const plan = SUBSCRIPTION_PLANS.find(p => p.id === pending.plan_id);
+
+      if (plan) {
+        updateSubscription(pending.telegram_id, plan.months, pending.amount);
+        
+        // Sync with panel
+        const user = getUser(pending.telegram_id);
+        if (user && user.vpn_config) {
+          const expiryTimestamp = new Date(user.subscription_ends_at).getTime();
+          await updateClientExpiry(pending.telegram_id, user.username, expiryTimestamp);
+        }
+
+        await ctx.editMessageText('✅ *Оплата подтверждена!*\n\nВаша подписка успешно продлена. Спасибо, что выбрали ДзенVPN!', { parse_mode: 'Markdown' });
+      }
+    } else if (payment.status === 'pending' || payment.status === 'waiting_for_capture') {
+      await ctx.answerCbQuery('⏳ Оплата еще не поступила. Попробуйте через минуту.', { show_alert: true });
+    } else {
+      await ctx.answerCbQuery('❌ Платеж отменен или произошла ошибка.', { show_alert: true });
+    }
+  } catch (error) {
+    console.error('Check Payment Error:', error);
+    await ctx.answerCbQuery('❌ Ошибка при проверке. Попробуйте позже.', { show_alert: true });
   }
 });
 
