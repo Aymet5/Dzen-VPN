@@ -2,7 +2,7 @@ import { Telegraf, Markup } from 'telegraf';
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -51,7 +51,12 @@ bot.start(async (ctx) => {
 
 bot.command('admin', async (ctx) => {
   const tgId = ctx.from.id;
-  if (!ADMIN_IDS.includes(tgId)) return;
+  console.log(`[ADMIN] Command attempt from ID: ${tgId}. Authorized IDs: ${ADMIN_IDS.join(', ')}`);
+  
+  if (!ADMIN_IDS.includes(tgId)) {
+    console.log(`[ADMIN] Access denied for ID: ${tgId}`);
+    return;
+  }
 
   const users = getAllUsers();
   const now = new Date();
@@ -264,7 +269,10 @@ bot.action('reset_vpn', async (ctx) => {
 bot.action('how_to', async (ctx) => {
   const text = `📖 *Как подключить ДзенVPN?*
 
-Настройка займет всего 2 минуты. Выберите ваше устройство, чтобы получить подробную инструкцию:`;
+Настройка займет всего 2 минуты. Выберите ваше устройство для инструкции.
+
+⚠️ *Если VPN не работает:*
+Нажмите кнопку *"🔄 Обновить подключение"* в разделе *"🚀 Получить VPN"*. Это сбросит старый ключ и выдаст новый рабочий конфиг.`;
   
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
@@ -361,7 +369,8 @@ _(Нажмите на код выше, чтобы скопировать)_
 2. Импортируйте скопированный ключ.
 3. Нажмите кнопку "Подключиться".
 
-📖 Подробные пошаговые инструкции для всех устройств доступны в главном меню в разделе *"Инструкция"*`;
+⚠️ *Если VPN не подключается:*
+Нажмите кнопку *"🔄 Обновить подключение"* ниже. Это создаст новый профиль в системе.`;
 
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
