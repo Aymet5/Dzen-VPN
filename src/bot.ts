@@ -2,7 +2,7 @@ import { Telegraf, Markup } from 'telegraf';
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -10,6 +10,7 @@ const MAIN_MENU = Markup.inlineKeyboard([
   [Markup.button.callback('🚀 Получить VPN', 'get_vpn')],
   [Markup.button.callback('👤 Моя подписка', 'my_sub'), Markup.button.callback('📖 Инструкция', 'how_to')],
   [Markup.button.callback('💳 Купить подписку', 'buy_sub')],
+  [Markup.button.callback('🎁 Пригласить друга', 'invite_friends')],
   [Markup.button.url('💬 Поддержка', 'https://t.me/podder5')]
 ]);
 
@@ -50,47 +51,53 @@ bot.start(async (ctx) => {
 
 bot.command('admin', async (ctx) => {
   const tgId = ctx.from.id;
-  if (!ADMIN_IDS.includes(tgId)) {
-    return;
-  }
+  if (!ADMIN_IDS.includes(tgId)) return;
 
   const users = getAllUsers();
-  const totalUsers = users.length;
   const now = new Date();
   
   let activeSubs = 0;
+  let trialUsers = 0;
   let totalRevenue = 0;
   
-  let userList = users.map(u => {
+  users.forEach(u => {
     const endsAt = new Date(u.subscription_ends_at);
-    const isActive = endsAt > now;
-    if (isActive) activeSubs++;
+    if (endsAt > now) {
+      activeSubs++;
+      if (u.total_spent === 0) trialUsers++;
+    }
     totalRevenue += u.total_spent;
-    
-    const statusIcon = isActive ? '✅' : '❌';
-    const premiumIcon = u.total_spent > 0 ? '💎' : '🆓';
-    
-    return `${premiumIcon} ID: ${u.telegram_id} | @${u.username || 'no_name'}\n   └ До: ${endsAt.toLocaleDateString('ru-RU')} ${statusIcon} | Потрачено: ${u.total_spent} ₽`;
-  }).join('\n\n');
+  });
 
   const statsText = `📊 *Админ-панель ДзенVPN*
 
-Всего пользователей: ${totalUsers}
-Активных подписок: ${activeSubs}
-Общая выручка: ${totalRevenue} ₽
+👥 Всего пользователей: ${users.length}
+✅ Активных подписок: ${activeSubs}
+🎁 На пробном периоде: ${trialUsers}
+💰 Общая выручка: ${totalRevenue} ₽`;
 
-*Список пользователей:*
-${userList || 'Пользователей пока нет'}`;
+  await ctx.reply(statsText, {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('📥 Скачать базу (CSV)', 'download_csv')],
+      [Markup.button.callback('⬅️ Назад', 'main_menu')]
+    ])
+  });
+});
 
-  // Split message if it's too long (Telegram limit is 4096 chars)
-  if (statsText.length > 4000) {
-    const chunks = statsText.match(/[\s\S]{1,4000}/g) || [];
-    for (const chunk of chunks) {
-      await ctx.reply(chunk, { parse_mode: 'Markdown' });
-    }
-  } else {
-    await ctx.reply(statsText, { parse_mode: 'Markdown' });
-  }
+bot.action('download_csv', async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+
+  const users = getAllUsers();
+  let csv = 'ID;Telegram ID;Username;Trial Started;Subscription Ends;Total Spent (RUB)\n';
+  
+  users.forEach(u => {
+    csv += `${u.id};${u.telegram_id};${u.username || ''};${u.trial_started_at};${u.subscription_ends_at};${u.total_spent}\n`;
+  });
+
+  const buffer = Buffer.from(csv, 'utf-8');
+  await ctx.replyWithDocument({ source: buffer, filename: 'users_database.csv' });
+  await ctx.answerCbQuery();
 });
 
 bot.action('main_menu', async (ctx) => {
@@ -367,6 +374,25 @@ _(Нажмите на код выше, чтобы скопировать)_
   });
 }
 
+bot.action('invite_friends', async (ctx) => {
+  const botUsername = ctx.botInfo.username;
+  const shareLink = `https://t.me/${botUsername}?start=ref_${ctx.from.id}`;
+  
+  const text = `🎁 *Приглашайте друзей и делитесь свободой!*
+
+Ваша персональная ссылка для приглашения:
+\`${shareLink}\`
+
+Отправьте эту ссылку друзьям. Когда они подключатся, они получат 7 дней пробного периода, а вы поможете нашему сервису расти!`;
+
+  await ctx.editMessageText(text, {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [Markup.button.url('🚀 Поделиться ссылкой', `https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent('Попробуй быстрый и надежный ДзенVPN! 7 дней бесплатно по моей ссылке:')}`)],
+      [Markup.button.callback('⬅️ Назад', 'main_menu')]
+    ])
+  });
+});
 bot.on('message', async (ctx) => {
   if ('text' in ctx.message && !ctx.message.text.startsWith('/start')) {
     try {
