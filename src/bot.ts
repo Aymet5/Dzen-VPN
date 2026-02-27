@@ -1,9 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
 import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaService.ts';
-import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus } from './db.ts';
+import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -324,11 +324,21 @@ bot.action('get_vpn', async (ctx) => {
 });
 
 bot.action('reset_vpn', async (ctx) => {
+  const user = getUser(ctx.from.id);
+  if (!user) return;
+
+  const endsAt = new Date(user.subscription_ends_at);
+  const now = new Date();
+  
+  if (endsAt <= now) {
+    await ctx.answerCbQuery('❌ Ваша подписка истекла. Продлите её для сброса конфига.', { show_alert: true });
+    return;
+  }
+
   await ctx.editMessageText('⏳ Сбрасываем текущее подключение и генерируем новое...', Markup.inlineKeyboard([]));
   
   try {
-    const user = getUser(ctx.from.id);
-    const expiryTimestamp = user ? new Date(user.subscription_ends_at).getTime() : 0;
+    const expiryTimestamp = endsAt.getTime();
     
     // 1. Delete from panel
     await deleteClient(ctx.from.id, ctx.from.username || null);
@@ -498,8 +508,43 @@ bot.on('message', async (ctx) => {
   }
 });
 
+async function checkExpirations() {
+  const users = getAllUsers();
+  const now = new Date();
+
+  for (const user of users) {
+    const endsAt = new Date(user.subscription_ends_at);
+    
+    // If subscription expired
+    if (endsAt < now) {
+      // If we haven't notified them about THIS expiration yet
+      // We check if last_notification is older than the expiration date
+      const lastNotified = user.last_expiration_notification ? new Date(user.last_expiration_notification) : null;
+      
+      if (!lastNotified || lastNotified < endsAt) {
+        try {
+          await bot.telegram.sendMessage(user.telegram_id, 
+            `⚠️ *Ваша подписка истекла!*\n\nДоступ к VPN приостановлен. Чтобы продолжить пользоваться сервисом, пожалуйста, продлите подписку в меню.`, 
+            { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('💳 Продлить подписку', 'buy_sub')]]) }
+          );
+          updateExpirationNotification(user.telegram_id);
+          console.log(`[Checker] Notified user ${user.telegram_id} about expiration`);
+        } catch (e) {
+          console.error(`[Checker] Failed to notify user ${user.telegram_id}:`, e);
+        }
+      }
+    }
+  }
+}
+
 export function startBot() {
-  bot.launch().then(() => console.log('Bot started'));
+  bot.launch().then(() => {
+    console.log('Bot started');
+    // Start expiration checker every hour
+    setInterval(checkExpirations, 60 * 60 * 1000);
+    // Initial check on start
+    checkExpirations();
+  });
 
   process.once('SIGINT', () => bot.stop('SIGINT'));
   process.once('SIGTERM', () => bot.stop('SIGTERM'));
