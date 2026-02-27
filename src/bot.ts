@@ -2,7 +2,7 @@ import { Telegraf, Markup } from 'telegraf';
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 export const bot = new Telegraf(BOT_TOKEN);
 
@@ -27,7 +27,8 @@ async function sendMainMenu(ctx: any, edit = false) {
   }
 }
 
-const YOOKASSA_PROVIDER_TOKEN = process.env.YOOKASSA_PROVIDER_TOKEN || '381764678:TEST:168868';
+const YOOKASSA_PROVIDER_TOKEN = process.env.YOOKASSA_PROVIDER_TOKEN || '390540012:LIVE:90657';
+const TEST_YOOKASSA_TOKEN = process.env.TEST_YOOKASSA_TOKEN || '381764678:TEST:168868';
 
 const SUBSCRIPTION_PLANS = [
   { id: '1', label: '1 месяц', months: 1, price: 99, description: 'Базовый доступ на 30 дней' },
@@ -136,6 +137,12 @@ bot.action('buy_sub', async (ctx) => {
   const buttons = SUBSCRIPTION_PLANS.map(plan => [
     Markup.button.callback(`${plan.label} — ${plan.price} ₽`, `buy_${plan.id}`)
   ]);
+
+  // Add test payment option for admins
+  if (ADMIN_IDS.includes(ctx.from.id)) {
+    buttons.push([Markup.button.callback('🧪 Тестовая оплата (Admin)', 'buy_test_1')]);
+  }
+
   buttons.push([Markup.button.callback('⬅️ Назад', 'main_menu')]);
 
   await ctx.editMessageText(text, {
@@ -144,13 +151,16 @@ bot.action('buy_sub', async (ctx) => {
   });
 });
 
-bot.action(/^buy_(\d+)$/, async (ctx) => {
-  const planId = ctx.match[1];
+bot.action(/^buy_(test_)?(\d+)$/, async (ctx) => {
+  const isTest = ctx.match[1] === 'test_';
+  const planId = ctx.match[2];
   const plan = SUBSCRIPTION_PLANS.find(p => p.id === planId);
   
   if (!plan) return;
 
-  if (!YOOKASSA_PROVIDER_TOKEN) {
+  const token = isTest ? TEST_YOOKASSA_TOKEN : YOOKASSA_PROVIDER_TOKEN;
+
+  if (!token) {
     await ctx.answerCbQuery('❌ Ошибка: Платежная система не настроена.', { show_alert: true });
     return;
   }
@@ -158,10 +168,10 @@ bot.action(/^buy_(\d+)$/, async (ctx) => {
   await ctx.deleteMessage().catch(() => {});
   
   await ctx.replyWithInvoice({
-    title: `ДзенVPN: ${plan.label}`,
+    title: `ДзенVPN: ${plan.label}${isTest ? ' (TEST)' : ''}`,
     description: plan.description,
     payload: `sub_${plan.id}_${ctx.from.id}`,
-    provider_token: YOOKASSA_PROVIDER_TOKEN,
+    provider_token: token,
     currency: 'RUB',
     prices: [{ label: plan.label, amount: plan.price * 100 }], // Amount in kopecks
     start_parameter: `sub_${plan.id}`,
