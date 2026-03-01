@@ -3,8 +3,9 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
 
 const MAIN_MENU = Markup.inlineKeyboard([
@@ -86,6 +87,50 @@ bot.command('admin', async (ctx) => {
   await ctx.reply(statsText, {
     parse_mode: 'Markdown',
     ...Markup.inlineKeyboard([
+      [Markup.button.callback('📢 Сделать рассылку', 'admin_broadcast')],
+      [Markup.button.callback('📥 Скачать базу (CSV)', 'download_csv')],
+      [Markup.button.callback('⬅️ Назад', 'main_menu')]
+    ])
+  });
+});
+
+bot.action('admin_broadcast', async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  
+  adminStates[ctx.from.id] = { mode: 'broadcast' };
+  await ctx.editMessageText('📢 *Режим рассылки*\n\nВведите текст сообщения, которое вы хотите отправить всем пользователям бота. Вы можете использовать Markdown.\n\n_Чтобы отменить, нажмите кнопку ниже._', {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([[Markup.button.callback('❌ Отмена', 'admin_cancel_broadcast')]])
+  });
+});
+
+bot.action('admin_cancel_broadcast', async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  delete adminStates[ctx.from.id];
+  await ctx.editMessageText('❌ Рассылка отменена.', Markup.inlineKeyboard([[Markup.button.callback('⬅️ В админку', 'admin_back')]]));
+});
+
+bot.action('admin_back', async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  // Trigger the admin command logic again
+  const users = getAllUsers();
+  const now = new Date();
+  let activeSubs = 0;
+  let trialUsers = 0;
+  let totalRevenue = 0;
+  users.forEach(u => {
+    const endsAt = new Date(u.subscription_ends_at);
+    if (endsAt > now) {
+      activeSubs++;
+      if (u.total_spent === 0) trialUsers++;
+    }
+    totalRevenue += u.total_spent;
+  });
+  const statsText = `📊 *Админ-панель ДзенVPN*\n\n👥 Всего пользователей: ${users.length}\n✅ Активных подписок: ${activeSubs}\n🎁 На пробном периоде: ${trialUsers}\n💰 Общая выручка: ${totalRevenue} ₽`;
+  await ctx.editMessageText(statsText, {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('📢 Сделать рассылку', 'admin_broadcast')],
       [Markup.button.callback('📥 Скачать базу (CSV)', 'download_csv')],
       [Markup.button.callback('⬅️ Назад', 'main_menu')]
     ])
@@ -498,12 +543,43 @@ bot.action('invite_friends', async (ctx) => {
   });
 });
 bot.on('message', async (ctx) => {
-  if ('text' in ctx.message && !ctx.message.text.startsWith('/start')) {
-    try {
-      await ctx.deleteMessage();
-      await sendMainMenu(ctx, false);
-    } catch (e) {
-      console.error('Failed to delete message', e);
+  if ('text' in ctx.message) {
+    const tgId = ctx.from.id;
+    
+    // Handle Admin Broadcast
+    if (ADMIN_IDS.includes(tgId) && adminStates[tgId]?.mode === 'broadcast') {
+      const broadcastText = ctx.message.text;
+      delete adminStates[tgId];
+      
+      const users = getAllUsers();
+      let successCount = 0;
+      let failCount = 0;
+      
+      await ctx.reply(`🚀 Начинаю рассылку на ${users.length} пользователей...`);
+      
+      for (const user of users) {
+        try {
+          await bot.telegram.sendMessage(user.telegram_id, broadcastText, { parse_mode: 'Markdown' });
+          successCount++;
+          // Small delay to avoid hitting rate limits
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } catch (e) {
+          failCount++;
+          console.error(`Failed to send broadcast to ${user.telegram_id}:`, e);
+        }
+      }
+      
+      await ctx.reply(`✅ *Рассылка завершена!*\n\nУспешно: ${successCount}\nОшибок: ${failCount}`, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    if (!ctx.message.text.startsWith('/start')) {
+      try {
+        await ctx.deleteMessage();
+        await sendMainMenu(ctx, false);
+      } catch (e) {
+        console.error('Failed to delete message', e);
+      }
     }
   }
 });
