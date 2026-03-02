@@ -179,3 +179,12 @@ export function usePromoCode(telegramId: number, code: string) {
 
   return true;
 }
+
+export function getAllPromoCodes() {
+  return db.prepare('SELECT * FROM promo_codes').all() as any[];
+}
+
+export function deletePromoCode(code: string) {
+  db.prepare('DELETE FROM promo_codes WHERE code = ?').run(code.toUpperCase());
+  db.prepare('DELETE FROM used_promos WHERE promo_code = ?').run(code.toUpperCase());
+}

@@ -1,9 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
 import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaService.ts';
-import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode } from './db.ts';
+import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -118,6 +118,7 @@ bot.command('admin', async (ctx) => {
     ...Markup.inlineKeyboard([
       [Markup.button.callback('📢 Сделать рассылку', 'admin_broadcast')],
       [Markup.button.callback('🎟 Создать промокод', 'admin_create_promo')],
+      [Markup.button.callback('🛠 Управление кодами', 'admin_manage_promos')],
       [Markup.button.callback('📥 Скачать базу (CSV)', 'download_csv')],
       [Markup.button.callback('⬅️ Назад', 'main_menu')]
     ])
@@ -131,6 +132,56 @@ bot.action('admin_create_promo', async (ctx) => {
     parse_mode: 'Markdown',
     ...Markup.inlineKeyboard([[Markup.button.callback('❌ Отмена', 'admin_back')]])
   });
+});
+
+bot.action('admin_manage_promos', async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  const promos = getAllPromoCodes();
+  
+  if (promos.length === 0) {
+    return ctx.editMessageText('🛠 *Управление промокодами*\n\nУ вас пока нет созданных промокодов.', {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'admin_back')]])
+    });
+  }
+
+  let text = '🛠 *Список промокодов:*\n\n';
+  const buttons = [];
+
+  promos.forEach(p => {
+    text += `🎫 \`${p.code}\` — ${p.days} дн. (${p.current_uses}/${p.max_uses})\n`;
+    buttons.push([Markup.button.callback(`❌ Удалить ${p.code}`, `admin_del_promo_${p.code}`)]);
+  });
+
+  buttons.push([Markup.button.callback('⬅️ Назад', 'admin_back')]);
+
+  await ctx.editMessageText(text, {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard(buttons)
+  });
+});
+
+bot.action(/^admin_del_promo_(.+)$/, async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  const code = ctx.match[1];
+  deletePromoCode(code);
+  await ctx.answerCbQuery(`✅ Код ${code} удален`);
+  // Refresh the list
+  const promos = getAllPromoCodes();
+  if (promos.length === 0) {
+    return ctx.editMessageText('🛠 *Управление промокодами*\n\nУ вас пока нет созданных промокодов.', {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'admin_back')]])
+    });
+  }
+  let text = '🛠 *Список промокодов:*\n\n';
+  const buttons = [];
+  promos.forEach(p => {
+    text += `🎫 \`${p.code}\` — ${p.days} дн. (${p.current_uses}/${p.max_uses})\n`;
+    buttons.push([Markup.button.callback(`❌ Удалить ${p.code}`, `admin_del_promo_${p.code}`)]);
+  });
+  buttons.push([Markup.button.callback('⬅️ Назад', 'admin_back')]);
+  await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
 });
 
 bot.action('admin_broadcast', async (ctx) => {
@@ -186,6 +237,7 @@ bot.action('admin_back', async (ctx) => {
     ...Markup.inlineKeyboard([
       [Markup.button.callback('📢 Сделать рассылку', 'admin_broadcast')],
       [Markup.button.callback('🎟 Создать промокод', 'admin_create_promo')],
+      [Markup.button.callback('🛠 Управление кодами', 'admin_manage_promos')],
       [Markup.button.callback('📥 Скачать базу (CSV)', 'download_csv')],
       [Markup.button.callback('⬅️ Назад', 'main_menu')]
     ])
@@ -614,7 +666,7 @@ bot.on('message', async (ctx) => {
     
     // Handle Admin Broadcast
     if (ADMIN_IDS.includes(tgId) && adminStates[tgId]?.mode === 'broadcast') {
-      const broadcastText = ctx.message.text;
+      const messageId = ctx.message.message_id;
       delete adminStates[tgId];
       
       const users = getAllUsers();
@@ -625,7 +677,7 @@ bot.on('message', async (ctx) => {
       
       for (const user of users) {
         try {
-          await bot.telegram.sendMessage(user.telegram_id, broadcastText, { parse_mode: 'Markdown' });
+          await bot.telegram.copyMessage(user.telegram_id, ctx.chat.id, messageId);
           successCount++;
           // Small delay to avoid hitting rate limits
           await new Promise(resolve => setTimeout(resolve, 50));
