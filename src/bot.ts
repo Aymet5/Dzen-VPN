@@ -3,7 +3,7 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -198,7 +198,7 @@ bot.action('buy_sub', async (ctx) => {
   });
 });
 
-bot.action(/^buy_(test_)?(\d+)$/, async (ctx) => {
+bot.action(/^buy_(test_)?(.+)$/, async (ctx) => {
   const isTest = ctx.match[1] === 'test_';
   const planId = ctx.match[2];
   const plan = SUBSCRIPTION_PLANS.find(p => p.id === planId);
