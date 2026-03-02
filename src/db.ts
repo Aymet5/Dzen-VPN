@@ -27,6 +27,15 @@ db.exec(`
   );
 `);
 
+// Migrations for existing databases
+try {
+  db.exec("ALTER TABLE users ADD COLUMN last_expiration_notification TEXT");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN connection_limit INTEGER DEFAULT 1");
+} catch (e) {}
+
 export interface User {
   id: number;
   telegram_id: number;
