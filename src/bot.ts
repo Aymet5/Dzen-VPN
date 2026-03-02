@@ -3,7 +3,7 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -67,13 +67,20 @@ bot.command('admin', async (ctx) => {
   
   let activeSubs = 0;
   let trialUsers = 0;
+  let paidUsers = 0;
+  let familyUsers = 0;
   let totalRevenue = 0;
   
   users.forEach(u => {
     const endsAt = new Date(u.subscription_ends_at);
     if (endsAt > now) {
       activeSubs++;
-      if (u.total_spent === 0) trialUsers++;
+      if (u.total_spent === 0) {
+        trialUsers++;
+      } else {
+        paidUsers++;
+        if (u.connection_limit === 5) familyUsers++;
+      }
     }
     totalRevenue += u.total_spent;
   });
@@ -81,8 +88,11 @@ bot.command('admin', async (ctx) => {
   const statsText = `📊 *Админ-панель ДзенVPN*
 
 👥 Всего пользователей: ${users.length}
-✅ Активных подписок: ${activeSubs}
+✅ Активных всего: ${activeSubs}
 🎁 На пробном периоде: ${trialUsers}
+💳 Платных подписок: ${paidUsers}
+👨‍👩‍👧‍👦 Семейных планов: ${familyUsers}
+
 💰 Общая выручка: ${totalRevenue} ₽`;
 
   await ctx.reply(statsText, {
@@ -118,16 +128,31 @@ bot.action('admin_back', async (ctx) => {
   const now = new Date();
   let activeSubs = 0;
   let trialUsers = 0;
+  let paidUsers = 0;
+  let familyUsers = 0;
   let totalRevenue = 0;
   users.forEach(u => {
     const endsAt = new Date(u.subscription_ends_at);
     if (endsAt > now) {
       activeSubs++;
-      if (u.total_spent === 0) trialUsers++;
+      if (u.total_spent === 0) {
+        trialUsers++;
+      } else {
+        paidUsers++;
+        if (u.connection_limit === 5) familyUsers++;
+      }
     }
     totalRevenue += u.total_spent;
   });
-  const statsText = `📊 *Админ-панель ДзенVPN*\n\n👥 Всего пользователей: ${users.length}\n✅ Активных подписок: ${activeSubs}\n🎁 На пробном периоде: ${trialUsers}\n💰 Общая выручка: ${totalRevenue} ₽`;
+  const statsText = `📊 *Админ-панель ДзенVPN*
+
+👥 Всего пользователей: ${users.length}
+✅ Активных всего: ${activeSubs}
+🎁 На пробном периоде: ${trialUsers}
+💳 Платных подписок: ${paidUsers}
+👨‍👩‍👧‍👦 Семейных планов: ${familyUsers}
+
+💰 Общая выручка: ${totalRevenue} ₽`;
   await ctx.editMessageText(statsText, {
     parse_mode: 'Markdown',
     ...Markup.inlineKeyboard([
