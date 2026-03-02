@@ -72,7 +72,7 @@ export async function deleteClient(telegramId: number, username: string | null):
   }
 }
 
-export async function updateClientExpiry(telegramId: number, username: string | null, expiryTimestamp: number): Promise<boolean> {
+export async function updateClientExpiry(telegramId: number, username: string | null, expiryTimestamp: number, limitIp: number = 1): Promise<boolean> {
   if (!cookie) {
     const loggedIn = await login();
     if (!loggedIn) return false;
@@ -94,13 +94,14 @@ export async function updateClientExpiry(telegramId: number, username: string | 
     
     if (!client) return false;
 
-    // Update the client expiry time
+    // Update the client expiry time and connection limit
     const response = await axios.post(`${PANEL_URL}panel/api/inbounds/updateClient/${client.id}`, {
       id: INBOUND_ID,
       settings: JSON.stringify({
         clients: [{
           ...client,
-          expiryTime: expiryTimestamp
+          expiryTime: expiryTimestamp,
+          limitIp: limitIp
         }]
       })
     }, {
@@ -115,7 +116,7 @@ export async function updateClientExpiry(telegramId: number, username: string | 
   }
 }
 
-export async function generateVlessConfig(telegramId: number, username: string | null, expiryTimestamp: number = 0): Promise<string | null> {
+export async function generateVlessConfig(telegramId: number, username: string | null, expiryTimestamp: number = 0, limitIp: number = 1): Promise<string | null> {
   try {
     if (!cookie) {
       const loggedIn = await login();
@@ -133,7 +134,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
           id: clientUuid,
           flow: "",
           email: email,
-          limitIp: 1,
+          limitIp: limitIp,
           totalGB: 0,
           expiryTime: expiryTimestamp, // Передаем реальную дату
           enable: true,

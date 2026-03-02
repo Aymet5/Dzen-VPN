@@ -13,7 +13,8 @@ db.exec(`
     subscription_ends_at DATETIME,
     vpn_config TEXT,
     total_spent INTEGER DEFAULT 0,
-    last_expiration_notification TEXT
+    last_expiration_notification TEXT,
+    connection_limit INTEGER DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS pending_payments (
@@ -35,6 +36,7 @@ export interface User {
   vpn_config: string | null;
   total_spent: number;
   last_expiration_notification: string | null;
+  connection_limit: number;
 }
 
 export function getUser(telegramId: number): User | undefined {
@@ -46,8 +48,8 @@ export function createUser(telegramId: number, username: string | null): User {
   const trialEnds = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
   
   const stmt = db.prepare(`
-    INSERT INTO users (telegram_id, username, trial_started_at, subscription_ends_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO users (telegram_id, username, trial_started_at, subscription_ends_at, connection_limit)
+    VALUES (?, ?, ?, ?, 1)
   `);
   
   stmt.run(telegramId, username, now.toISOString(), trialEnds.toISOString());
@@ -89,6 +91,11 @@ export function updateVpnConfig(telegramId: number, config: string | null) {
 export function updateExpirationNotification(telegramId: number) {
   db.prepare('UPDATE users SET last_expiration_notification = ? WHERE telegram_id = ?')
     .run(new Date().toISOString(), telegramId);
+}
+
+export function updateConnectionLimit(telegramId: number, limit: number) {
+  db.prepare('UPDATE users SET connection_limit = ? WHERE telegram_id = ?')
+    .run(limit, telegramId);
 }
 
 export function getAllUsers(): User[] {

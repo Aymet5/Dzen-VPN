@@ -1,9 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
 import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaService.ts';
-import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification } from './db.ts';
+import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -37,6 +37,7 @@ const SUBSCRIPTION_PLANS = [
   { id: '3', label: '3 месяца', months: 3, price: 249, description: 'Экономия 15% - Квартальный доступ' },
   { id: '6', label: '6 месяцев', months: 6, price: 449, description: 'Экономия 25% - Полгода свободы' },
   { id: '12', label: '12 месяцев', months: 12, price: 799, description: 'Экономия 33% - Целый год без границ' },
+  { id: 'family', label: 'Семейная (5 чел)', months: 1, price: 300, description: 'Доступ для 5 устройств одновременно' },
 ];
 
 bot.start(async (ctx) => {
@@ -167,7 +168,7 @@ bot.action('my_sub', async (ctx) => {
   const status = isActive ? '✅ Активна' : '❌ Истекла';
   const dateStr = endsAt.toLocaleString('ru-RU');
 
-  const text = `👤 *Моя подписка*\n\nСтатус: ${status}\nДействует до: ${dateStr}`;
+  const text = `👤 *Моя подписка*\n\nСтатус: ${status}\nДействует до: ${dateStr}\nЛимит устройств: *${user.connection_limit}*`;
   
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
@@ -266,22 +267,29 @@ bot.action(/^check_pay_(.+)$/, async (ctx) => {
     if (payment.status === 'succeeded') {
       updatePaymentStatus(paymentId, 'succeeded');
       
-      const SUBSCRIPTION_PLANS = [
+      const SUBSCRIPTION_PLANS_INTERNAL = [
         { id: '1', months: 1 },
         { id: '3', months: 3 },
         { id: '6', months: 6 },
         { id: '12', months: 12 },
+        { id: 'family', months: 1 },
       ];
-      const plan = SUBSCRIPTION_PLANS.find(p => p.id === pending.plan_id);
+      const plan = SUBSCRIPTION_PLANS_INTERNAL.find(p => p.id === pending.plan_id);
 
       if (plan) {
         updateSubscription(pending.telegram_id, plan.months, pending.amount);
         
+        if (pending.plan_id === 'family') {
+          updateConnectionLimit(pending.telegram_id, 5);
+        } else {
+          updateConnectionLimit(pending.telegram_id, 1);
+        }
+
         // Sync with panel
         const user = getUser(pending.telegram_id);
         if (user && user.vpn_config) {
           const expiryTimestamp = new Date(user.subscription_ends_at).getTime();
-          await updateClientExpiry(pending.telegram_id, user.username, expiryTimestamp);
+          await updateClientExpiry(pending.telegram_id, user.username, expiryTimestamp, user.connection_limit);
         }
 
         await ctx.editMessageText('✅ *Оплата подтверждена!*\n\nВаша подписка успешно продлена. Спасибо, что выбрали ДзенVPN!', { parse_mode: 'Markdown' });
@@ -351,7 +359,7 @@ bot.action('get_vpn', async (ctx) => {
     
     try {
       const expiryTimestamp = new Date(user.subscription_ends_at).getTime();
-      const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null, expiryTimestamp);
+      const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null, expiryTimestamp, user.connection_limit);
       if (config) {
         updateVpnConfig(ctx.from.id, config);
         await sendVpnConfig(ctx, config);
@@ -392,7 +400,7 @@ bot.action('reset_vpn', async (ctx) => {
     updateVpnConfig(ctx.from.id, null);
     
     // 3. Generate new
-    const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null, expiryTimestamp);
+    const config = await generateVlessConfig(ctx.from.id, ctx.from.username || null, expiryTimestamp, user.connection_limit);
     if (config) {
       updateVpnConfig(ctx.from.id, config);
       await sendVpnConfig(ctx, config);
