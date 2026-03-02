@@ -14,7 +14,21 @@ db.exec(`
     vpn_config TEXT,
     total_spent INTEGER DEFAULT 0,
     last_expiration_notification TEXT,
+    last_3day_notification TEXT,
     connection_limit INTEGER DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS promo_codes (
+    code TEXT PRIMARY KEY,
+    days INTEGER NOT NULL,
+    max_uses INTEGER NOT NULL,
+    current_uses INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS used_promos (
+    user_id INTEGER,
+    promo_code TEXT,
+    PRIMARY KEY (user_id, promo_code)
   );
 
   CREATE TABLE IF NOT EXISTS pending_payments (
@@ -36,6 +50,10 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN connection_limit INTEGER DEFAULT 1");
 } catch (e) {}
 
+try {
+  db.exec("ALTER TABLE users ADD COLUMN last_3day_notification TEXT");
+} catch (e) {}
+
 export interface User {
   id: number;
   telegram_id: number;
@@ -45,6 +63,7 @@ export interface User {
   vpn_config: string | null;
   total_spent: number;
   last_expiration_notification: string | null;
+  last_3day_notification: string | null;
   connection_limit: number;
 }
 
@@ -52,9 +71,9 @@ export function getUser(telegramId: number): User | undefined {
   return db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(telegramId) as User | undefined;
 }
 
-export function createUser(telegramId: number, username: string | null): User {
+export function createUser(telegramId: number, username: string | null, initialDays: number = 7): User {
   const now = new Date();
-  const trialEnds = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+  const trialEnds = new Date(now.getTime() + initialDays * 24 * 60 * 60 * 1000);
   
   const stmt = db.prepare(`
     INSERT INTO users (telegram_id, username, trial_started_at, subscription_ends_at, connection_limit)
@@ -63,6 +82,20 @@ export function createUser(telegramId: number, username: string | null): User {
   
   stmt.run(telegramId, username, now.toISOString(), trialEnds.toISOString());
   return getUser(telegramId)!;
+}
+
+export function addDaysToUser(telegramId: number, days: number) {
+  const user = getUser(telegramId);
+  if (!user) return;
+
+  const now = new Date();
+  const currentEnds = new Date(user.subscription_ends_at);
+  const baseDate = currentEnds > now ? currentEnds : now;
+  
+  baseDate.setDate(baseDate.getDate() + days);
+  
+  db.prepare('UPDATE users SET subscription_ends_at = ? WHERE telegram_id = ?')
+    .run(baseDate.toISOString(), telegramId);
 }
 
 export function updateSubscription(telegramId: number, monthsToAdd: number, amountPaid: number) {
@@ -102,6 +135,11 @@ export function updateExpirationNotification(telegramId: number) {
     .run(new Date().toISOString(), telegramId);
 }
 
+export function update3DayNotification(telegramId: number) {
+  db.prepare('UPDATE users SET last_3day_notification = ? WHERE telegram_id = ?')
+    .run(new Date().toISOString(), telegramId);
+}
+
 export function updateConnectionLimit(telegramId: number, limit: number) {
   db.prepare('UPDATE users SET connection_limit = ? WHERE telegram_id = ?')
     .run(limit, telegramId);
@@ -109,4 +147,35 @@ export function updateConnectionLimit(telegramId: number, limit: number) {
 
 export function getAllUsers(): User[] {
   return db.prepare('SELECT * FROM users').all() as User[];
+}
+
+// Promo Code Functions
+export function createPromoCode(code: string, days: number, maxUses: number) {
+  db.prepare('INSERT INTO promo_codes (code, days, max_uses) VALUES (?, ?, ?)')
+    .run(code.toUpperCase(), days, maxUses);
+}
+
+export function getPromoCode(code: string) {
+  return db.prepare('SELECT * FROM promo_codes WHERE code = ?').get(code.toUpperCase()) as any;
+}
+
+export function usePromoCode(telegramId: number, code: string) {
+  const promo = getPromoCode(code);
+  if (!promo) return false;
+
+  // Check if user already used it
+  const alreadyUsed = db.prepare('SELECT * FROM used_promos WHERE user_id = ? AND promo_code = ?')
+    .get(telegramId, promo.code);
+  
+  if (alreadyUsed) return 'ALREADY_USED';
+  if (promo.current_uses >= promo.max_uses) return 'EXHAUSTED';
+
+  // Apply days
+  addDaysToUser(telegramId, promo.days);
+
+  // Mark as used
+  db.prepare('INSERT INTO used_promos (user_id, promo_code) VALUES (?, ?)').run(telegramId, promo.code);
+  db.prepare('UPDATE promo_codes SET current_uses = current_uses + 1 WHERE code = ?').run(promo.code);
+
+  return true;
 }

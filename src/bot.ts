@@ -1,9 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
 import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaService.ts';
-import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit } from './db.ts';
+import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -43,11 +43,29 @@ const SUBSCRIPTION_PLANS = [
 bot.start(async (ctx) => {
   const tgId = ctx.from.id;
   const username = ctx.from.username || null;
+  const startPayload = ctx.startPayload;
   
   let user = getUser(tgId);
   if (!user) {
-    user = createUser(tgId, username);
-    await ctx.reply('🎁 Вам начислено 7 дней бесплатного пробного периода!');
+    let initialDays = 7;
+    let inviterId: number | null = null;
+
+    if (startPayload && startPayload.startsWith('ref_')) {
+      inviterId = parseInt(startPayload.split('_')[1]);
+      if (!isNaN(inviterId) && inviterId !== tgId) {
+        const inviter = getUser(inviterId);
+        if (inviter) {
+          initialDays = 14; // 7 standard + 7 bonus
+          addDaysToUser(inviterId, 7);
+          try {
+            await bot.telegram.sendMessage(inviterId, `🎁 *У вас новый реферал!*\n\nВаша подписка продлена на *+7 дней*. Спасибо за приглашение!`, { parse_mode: 'Markdown' });
+          } catch (e) {}
+        }
+      }
+    }
+
+    user = createUser(tgId, username, initialDays);
+    await ctx.reply(`🎁 Вам начислено *${initialDays} дней* бесплатного пробного периода!${initialDays > 7 ? '\n\n(7 стандартных + 7 бонусных за приглашение)' : ''}`, { parse_mode: 'Markdown' });
   }
   
   await sendMainMenu(ctx, false);
@@ -99,9 +117,19 @@ bot.command('admin', async (ctx) => {
     parse_mode: 'Markdown',
     ...Markup.inlineKeyboard([
       [Markup.button.callback('📢 Сделать рассылку', 'admin_broadcast')],
+      [Markup.button.callback('🎟 Создать промокод', 'admin_create_promo')],
       [Markup.button.callback('📥 Скачать базу (CSV)', 'download_csv')],
       [Markup.button.callback('⬅️ Назад', 'main_menu')]
     ])
+  });
+});
+
+bot.action('admin_create_promo', async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  adminStates[ctx.from.id] = { mode: 'create_promo_step1' };
+  await ctx.editMessageText('🎟 *Создание промокода (Шаг 1/3)*\n\nВведите название промокода (например: `DZEN2024`).', {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([[Markup.button.callback('❌ Отмена', 'admin_back')]])
   });
 });
 
@@ -157,6 +185,7 @@ bot.action('admin_back', async (ctx) => {
     parse_mode: 'Markdown',
     ...Markup.inlineKeyboard([
       [Markup.button.callback('📢 Сделать рассылку', 'admin_broadcast')],
+      [Markup.button.callback('🎟 Создать промокод', 'admin_create_promo')],
       [Markup.button.callback('📥 Скачать базу (CSV)', 'download_csv')],
       [Markup.button.callback('⬅️ Назад', 'main_menu')]
     ])
@@ -560,12 +589,15 @@ bot.action('invite_friends', async (ctx) => {
   const botUsername = ctx.botInfo.username;
   const shareLink = `https://t.me/${botUsername}?start=ref_${ctx.from.id}`;
   
-  const text = `🎁 *Приглашайте друзей и делитесь свободой!*
+  const text = `🎁 *Приглашайте друзей и получайте бонусы!*
 
-Ваша персональная ссылка для приглашения:
+За каждого приглашенного друга вы получите **+7 дней** к подписке.
+Ваш друг получит **14 дней** (7 стандартных + 7 бонусных)!
+
+Ваша персональная ссылка:
 \`${shareLink}\`
 
-Отправьте эту ссылку друзьям. Когда они подключатся, они получат 7 дней пробного периода, а вы поможете нашему сервису расти!`;
+Отправьте эту ссылку друзьям. Как только они запустят бота, бонусы начислятся автоматически!`;
 
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
@@ -578,6 +610,7 @@ bot.action('invite_friends', async (ctx) => {
 bot.on('message', async (ctx) => {
   if ('text' in ctx.message) {
     const tgId = ctx.from.id;
+    const text = ctx.message.text;
     
     // Handle Admin Broadcast
     if (ADMIN_IDS.includes(tgId) && adminStates[tgId]?.mode === 'broadcast') {
@@ -606,6 +639,46 @@ bot.on('message', async (ctx) => {
       return;
     }
 
+    // Handle Admin Create Promo
+    if (ADMIN_IDS.includes(tgId) && adminStates[tgId]?.mode?.startsWith('create_promo_step')) {
+      const state = adminStates[tgId];
+      if (state.mode === 'create_promo_step1') {
+        (state as any).code = text.toUpperCase();
+        state.mode = 'create_promo_step2';
+        await ctx.reply(`🎟 *Создание промокода: ${(state as any).code} (Шаг 2/3)*\n\nСколько дней подписки будет давать этот код? (Введите число, например: \`30\`)`, { parse_mode: 'Markdown' });
+      } else if (state.mode === 'create_promo_step2') {
+        const days = parseInt(text);
+        if (isNaN(days)) return ctx.reply('❌ Введите число дней.');
+        (state as any).days = days;
+        state.mode = 'create_promo_step3';
+        await ctx.reply(`🎟 *Создание промокода: ${(state as any).code} (Шаг 3/3)*\n\nСколько человек смогут его активировать? (Введите число, например: \`100\`)`, { parse_mode: 'Markdown' });
+      } else if (state.mode === 'create_promo_step3') {
+        const limit = parseInt(text);
+        if (isNaN(limit)) return ctx.reply('❌ Введите число лимита.');
+        const { code, days } = state as any;
+        createPromoCode(code, days, limit);
+        delete adminStates[tgId];
+        await ctx.reply(`✅ *Промокод успешно создан!*\n\nКод: \`${code}\`\nДней: ${days}\nЛимит: ${limit}`, { parse_mode: 'Markdown' });
+      }
+      return;
+    }
+
+    // Handle Promo Code Activation (User sends a message)
+    if (!text.startsWith('/')) {
+      const result = usePromoCode(tgId, text);
+      if (result === true) {
+        const promo = getPromoCode(text);
+        await ctx.reply(`✅ *Промокод активирован!*\n\nВам начислено *+${promo.days} дней* подписки. Спасибо!`, { parse_mode: 'Markdown' });
+        return;
+      } else if (result === 'ALREADY_USED') {
+        await ctx.reply('❌ Вы уже активировали этот промокод.');
+        return;
+      } else if (result === 'EXHAUSTED') {
+        await ctx.reply('❌ Лимит использований этого промокода исчерпан.');
+        return;
+      }
+    }
+
     if (!ctx.message.text.startsWith('/start')) {
       try {
         await ctx.deleteMessage();
@@ -623,13 +696,12 @@ async function checkExpirations() {
 
   for (const user of users) {
     const endsAt = new Date(user.subscription_ends_at);
-    
-    // If subscription expired
+    const diffMs = endsAt.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    // 1. If subscription expired
     if (endsAt < now) {
-      // If we haven't notified them about THIS expiration yet
-      // We check if last_notification is older than the expiration date
       const lastNotified = user.last_expiration_notification ? new Date(user.last_expiration_notification) : null;
-      
       if (!lastNotified || lastNotified < endsAt) {
         try {
           await bot.telegram.sendMessage(user.telegram_id, 
@@ -637,10 +709,37 @@ async function checkExpirations() {
             { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('💳 Продлить подписку', 'buy_sub')]]) }
           );
           updateExpirationNotification(user.telegram_id);
-          console.log(`[Checker] Notified user ${user.telegram_id} about expiration`);
-        } catch (e) {
-          console.error(`[Checker] Failed to notify user ${user.telegram_id}:`, e);
-        }
+        } catch (e) {}
+      }
+    } 
+    // 2. Smart Notification: 3 days left
+    else if (diffDays === 3) {
+      const last3DayNotified = user.last_3day_notification ? new Date(user.last_3day_notification) : null;
+      // Only notify if we haven't notified for THIS 3-day window
+      // We check if the last notification was more than 24 hours ago to be safe
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      
+      if (!last3DayNotified || last3DayNotified < oneDayAgo) {
+        try {
+          const shareLink = `https://t.me/${bot.botInfo?.username || 'DzenVpnBot'}?start=ref_${user.telegram_id}`;
+          const text = `⏳ *Ваша подписка заканчивается через 3 дня!*
+
+Чтобы не потерять доступ к безопасному интернету, вы можете:
+
+1. 💳 *Продлить подписку* в меню бота.
+2. 🎁 *Получить дни БЕСПЛАТНО!* Пригласите друга по своей ссылке. Как только он запустит бота, **вы получите +7 дней**, а ваш друг получит **14 дней** (7 стандартных + 7 бонусных) бесплатного периода!
+
+Ваша ссылка для приглашения:
+\`${shareLink}\`
+
+Не откладывайте на потом, чтобы оставаться на связи! 🚀`;
+
+          await bot.telegram.sendMessage(user.telegram_id, text, { 
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([[Markup.button.callback('💳 Продлить подписку', 'buy_sub')]])
+          });
+          update3DayNotification(user.telegram_id);
+        } catch (e) {}
       }
     }
   }
