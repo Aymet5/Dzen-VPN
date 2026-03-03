@@ -151,10 +151,11 @@ export async function generateVlessConfig(telegramId: number, username: string |
       if (addResponse.data.msg && addResponse.data.msg.includes('Duplicate email')) {
         isDuplicate = true;
       } else {
+        console.error('[VPN] Add Client Failed:', addResponse.data.msg);
         cookie = '';
         const retry = await login();
         if (!retry) return null;
-        return generateVlessConfig(telegramId, username);
+        return generateVlessConfig(telegramId, username, expiryTimestamp, limitIp);
       }
     }
 
@@ -164,15 +165,29 @@ export async function generateVlessConfig(telegramId: number, username: string |
     });
 
     const inbound = inboundResponse.data.obj;
-    if (!inbound) return null;
+    if (!inbound) {
+      console.error('[VPN] Inbound not found after adding client');
+      return null;
+    }
 
     if (isDuplicate) {
       const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
       const existingClient = settings.clients?.find((c: any) => c.email === email);
-      if (existingClient) clientUuid = existingClient.id;
+      if (existingClient) {
+        clientUuid = existingClient.id;
+        console.log('[VPN] Using existing client UUID:', clientUuid);
+        
+        // Update existing client to ensure expiry and limit are correct
+        await updateClientExpiry(telegramId, username, expiryTimestamp, limitIp);
+      } else {
+        console.error('[VPN] Duplicate email reported but client not found in inbound settings');
+        return null;
+      }
     }
 
     const streamSettings = typeof inbound.streamSettings === 'string' ? JSON.parse(inbound.streamSettings) : inbound.streamSettings;
+    const network = streamSettings.network || 'tcp';
+    const security = streamSettings.security || 'none';
     
     // Robust Reality settings extraction
     const reality = streamSettings?.realitySettings || streamSettings?.settings?.realitySettings || {};
@@ -183,15 +198,21 @@ export async function generateVlessConfig(telegramId: number, username: string |
     const serverName = reality.serverNames?.[0] || realityInner.serverNames?.[0] || 'google.com';
     const spiderX = reality.spiderX || realityInner.spiderX || '%2F';
 
-    if (!publicKey) {
-      console.error('[VPN] ERROR: Public Key (pbk) not found! Reality settings:', JSON.stringify(reality));
+    if (!publicKey && security === 'reality') {
+      console.error('[VPN] ERROR: Public Key (pbk) not found for Reality! Reality settings:', JSON.stringify(reality));
       return null;
     }
 
     const port = inbound.port;
     const host = new URL(PANEL_URL).hostname;
 
-    const vlessLink = `vless://${clientUuid}@${host}:${port}?type=tcp&encryption=none&security=reality&pbk=${publicKey}&fp=chrome&sni=${serverName}&sid=${shortId}&spx=${encodeURIComponent(spiderX)}#ZenVPN_${email}`;
+    let vlessLink = `vless://${clientUuid}@${host}:${port}?type=${network}&encryption=none&security=${security}`;
+    
+    if (security === 'reality') {
+      vlessLink += `&pbk=${publicKey}&fp=chrome&sni=${serverName}&sid=${shortId}&spx=${encodeURIComponent(spiderX)}`;
+    }
+    
+    vlessLink += `#ZenVPN_${email}`;
     
     console.log('[VPN] Success! Generated Link:', vlessLink);
     return vlessLink;

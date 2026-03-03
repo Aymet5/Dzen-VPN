@@ -3,7 +3,7 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -430,7 +430,7 @@ bot.on('successful_payment', async (ctx) => {
     const user = getUser(ctx.from.id);
     if (user && user.vpn_config) {
       const expiryTimestamp = new Date(user.subscription_ends_at).getTime();
-      await updateClientExpiry(ctx.from.id, ctx.from.username || null, expiryTimestamp);
+      await updateClientExpiry(ctx.from.id, ctx.from.username || null, expiryTimestamp, user.connection_limit);
     }
     
     await ctx.reply(`🎉 *Оплата прошла успешно!*
@@ -660,37 +660,43 @@ bot.action('invite_friends', async (ctx) => {
   });
 });
 bot.on('message', async (ctx) => {
-  if ('text' in ctx.message) {
-    const tgId = ctx.from.id;
-    const text = ctx.message.text;
+  const tgId = ctx.from.id;
+  const message = ctx.message as any;
+  
+  // Handle Admin Broadcast
+  if (ADMIN_IDS.includes(tgId) && adminStates[tgId]?.mode === 'broadcast') {
+    const messageId = message.message_id;
+    delete adminStates[tgId];
     
-    // Handle Admin Broadcast
-    if (ADMIN_IDS.includes(tgId) && adminStates[tgId]?.mode === 'broadcast') {
-      const messageId = ctx.message.message_id;
-      delete adminStates[tgId];
-      
-      const users = getAllUsers();
-      let successCount = 0;
-      let failCount = 0;
-      
-      await ctx.reply(`🚀 Начинаю рассылку на ${users.length} пользователей...`);
-      
-      for (const user of users) {
-        try {
-          await bot.telegram.copyMessage(user.telegram_id, ctx.chat.id, messageId);
-          successCount++;
-          // Small delay to avoid hitting rate limits
-          await new Promise(resolve => setTimeout(resolve, 50));
-        } catch (e) {
-          failCount++;
-          console.error(`Failed to send broadcast to ${user.telegram_id}:`, e);
-        }
+    const users = getAllUsers();
+    let successCount = 0;
+    let failCount = 0;
+    
+    console.log(`[ADMIN] Starting broadcast of message ${messageId} to ${users.length} users`);
+    await ctx.reply(`🚀 Начинаю рассылку на ${users.length} пользователей...`);
+    
+    for (const user of users) {
+      try {
+        await bot.telegram.copyMessage(user.telegram_id, ctx.chat.id, messageId);
+        successCount++;
+        if (successCount % 50 === 0) console.log(`[ADMIN] Broadcast progress: ${successCount}/${users.length}`);
+        // Small delay to avoid hitting rate limits
+        await new Promise(resolve => setTimeout(resolve, 50));
+      } catch (e: any) {
+        failCount++;
+        console.error(`Failed to send broadcast to ${user.telegram_id}:`, e.message);
       }
-      
-      await ctx.reply(`✅ *Рассылка завершена!*\n\nУспешно: ${successCount}\nОшибок: ${failCount}`, { parse_mode: 'Markdown' });
-      return;
     }
+    
+    console.log(`[ADMIN] Broadcast finished. Success: ${successCount}, Fail: ${failCount}`);
+    
+    await ctx.reply(`✅ *Рассылка завершена!*\n\nУспешно: ${successCount}\nОшибок: ${failCount}`, { parse_mode: 'Markdown' });
+    return;
+  }
 
+  if (message.text) {
+    const text = message.text;
+    
     // Handle Admin Create Promo
     if (ADMIN_IDS.includes(tgId) && adminStates[tgId]?.mode?.startsWith('create_promo_step')) {
       const state = adminStates[tgId];
@@ -731,14 +737,20 @@ bot.on('message', async (ctx) => {
       }
     }
 
-    if (!ctx.message.text.startsWith('/start')) {
+    if (!text.startsWith('/start')) {
       try {
-        await ctx.deleteMessage();
+        await ctx.deleteMessage().catch(() => {});
         await sendMainMenu(ctx, false);
       } catch (e) {
         console.error('Failed to delete message', e);
       }
     }
+  } else {
+    // Non-text message from user (not in broadcast mode)
+    try {
+      await ctx.deleteMessage().catch(() => {});
+      await sendMainMenu(ctx, false);
+    } catch (e) {}
   }
 });
 
@@ -773,7 +785,8 @@ async function checkExpirations() {
       
       if (!last3DayNotified || last3DayNotified < oneDayAgo) {
         try {
-          const shareLink = `https://t.me/${bot.botInfo?.username || 'DzenVpnBot'}?start=ref_${user.telegram_id}`;
+          const botInfo = await bot.telegram.getMe();
+          const shareLink = `https://t.me/${botInfo.username}?start=ref_${user.telegram_id}`;
           const text = `⏳ *Ваша подписка заканчивается через 3 дня!*
 
 Чтобы не потерять доступ к безопасному интернету, вы можете:
