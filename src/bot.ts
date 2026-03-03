@@ -3,7 +3,7 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -596,18 +596,20 @@ bot.action('how_pc', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
   const text = `💻 *Инструкция для Windows*
 
-1. Скачайте [v2rayN-Core.zip](https://github.com/2dust/v2rayN/releases) и распакуйте его.
-2. Запустите *v2rayN.exe*.
-3. Скопируйте ваш ключ (VLESS-ссылку).
-4. В программе нажмите *"Servers"* -> *"Import bulk URL from clipboard"*.
-5. Нажмите правой кнопкой на сервер -> *"Set as active server"*.
-6. В системном трее (возле часов) нажмите правой кнопкой на иконку v2rayN -> *"System Proxy"* -> *"Set system proxy"*.
+1. Скачайте приложение *Happ Proxy* для ПК по кнопке ниже.
+2. Установите и запустите приложение.
+3. Скопируйте ваш ключ (VLESS-ссылку) из раздела "🚀 Получить VPN".
+4. В приложении нажмите кнопку добавления конфига (обычно иконка "+" или "Import").
+5. Нажмите кнопку подключения.
 
 ✅ *Готово!*`;
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
     link_preview_options: { is_disabled: true },
-    ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'how_to')]])
+    ...Markup.inlineKeyboard([
+      [Markup.button.url('📥 Скачать Happ Proxy для Windows', 'https://www.happ.su/main')],
+      [Markup.button.callback('⬅️ Назад', 'how_to')]
+    ])
   });
 });
 
