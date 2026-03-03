@@ -3,7 +3,7 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -126,6 +126,7 @@ bot.command('admin', async (ctx) => {
 });
 
 bot.action('admin_create_promo', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   if (!ADMIN_IDS.includes(ctx.from.id)) return;
   adminStates[ctx.from.id] = { mode: 'create_promo_step1' };
   await ctx.editMessageText('🎟 *Создание промокода (Шаг 1/3)*\n\nВведите название промокода (например: `DZEN2024`).', {
@@ -135,6 +136,7 @@ bot.action('admin_create_promo', async (ctx) => {
 });
 
 bot.action('admin_manage_promos', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   if (!ADMIN_IDS.includes(ctx.from.id)) return;
   const promos = getAllPromoCodes();
   
@@ -185,6 +187,7 @@ bot.action(/^admin_del_promo_(.+)$/, async (ctx) => {
 });
 
 bot.action('admin_broadcast', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   if (!ADMIN_IDS.includes(ctx.from.id)) return;
   
   adminStates[ctx.from.id] = { mode: 'broadcast' };
@@ -201,6 +204,7 @@ bot.action('admin_cancel_broadcast', async (ctx) => {
 });
 
 bot.action('admin_back', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   if (!ADMIN_IDS.includes(ctx.from.id)) return;
   // Trigger the admin command logic again
   const users = getAllUsers();
@@ -245,6 +249,7 @@ bot.action('admin_back', async (ctx) => {
 });
 
 bot.action('download_csv', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   if (!ADMIN_IDS.includes(ctx.from.id)) return;
 
   const users = getAllUsers();
@@ -260,10 +265,12 @@ bot.action('download_csv', async (ctx) => {
 });
 
 bot.action('main_menu', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   await sendMainMenu(ctx, true);
 });
 
 bot.action('my_sub', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const user = getUser(ctx.from.id);
   if (!user) return;
 
@@ -283,6 +290,7 @@ bot.action('my_sub', async (ctx) => {
 });
 
 bot.action('buy_sub', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const text = `💳 *Выберите тарифный план:*
 
 Мы подготовили для вас самые выгодные условия. Чем дольше период, тем дешевле обходится месяц!`;
@@ -444,6 +452,7 @@ bot.on('successful_payment', async (ctx) => {
 });
 
 bot.action('get_vpn', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const user = getUser(ctx.from.id);
   if (!user) return;
 
@@ -483,6 +492,7 @@ bot.action('get_vpn', async (ctx) => {
 });
 
 bot.action('reset_vpn', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const user = getUser(ctx.from.id);
   if (!user) return;
 
@@ -521,6 +531,7 @@ bot.action('reset_vpn', async (ctx) => {
 });
 
 bot.action('how_to', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const text = `📖 *Как подключить ДзенVPN?*
 
 Настройка займет всего 2 минуты. Выберите ваше устройство для инструкции.
@@ -540,6 +551,7 @@ bot.action('how_to', async (ctx) => {
 });
 
 bot.action('how_android', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const text = `🤖 *Инструкция для Android*
 
 1. Скачайте приложение *Happ Proxy* по кнопке ниже.
@@ -560,6 +572,7 @@ bot.action('how_android', async (ctx) => {
 });
 
 bot.action('how_ios', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const text = `🍏 *Инструкция для iOS (iPhone/iPad)*
 
 1. Установите приложение *Happ Proxy* по кнопке ниже.
@@ -580,6 +593,7 @@ bot.action('how_ios', async (ctx) => {
 });
 
 bot.action('how_pc', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const text = `💻 *Инструкция для Windows*
 
 1. Скачайте [v2rayN-Core.zip](https://github.com/2dust/v2rayN/releases) и распакуйте его.
@@ -598,6 +612,7 @@ bot.action('how_pc', async (ctx) => {
 });
 
 bot.action('how_mac', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const text = `🍎 *Инструкция для macOS*
 
 1. Установите [FoXray](https://apps.apple.com/us/app/foxray/id6448898396) или [V2RayXS](https://github.com/Cenmrev/V2RayX/releases).
@@ -614,6 +629,7 @@ bot.action('how_mac', async (ctx) => {
 });
 
 bot.action('how_troubleshoot', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const text = `⚠️ *Не открывается Gemini, ChatGPT или Netflix?*
 
 Если VPN включен, но эти сайты не работают, проблема обычно в настройках DNS вашего приложения.
@@ -666,6 +682,7 @@ _(Нажмите на код выше, чтобы скопировать)_
 }
 
 bot.action('invite_friends', async (ctx) => {
+  await ctx.answerCbQuery().catch(() => {});
   const botUsername = ctx.botInfo.username;
   const shareLink = `https://t.me/${botUsername}?start=ref_${ctx.from.id}`;
   
@@ -763,9 +780,8 @@ bot.on('message', async (ctx) => {
         await ctx.reply('❌ Лимит использований этого промокода исчерпан.');
         return;
       }
-    }
-
-    if (!text.startsWith('/start')) {
+      
+      // If it's not a promo code and not a command, delete and show menu
       try {
         await ctx.deleteMessage().catch(() => {});
         await sendMainMenu(ctx, false);
