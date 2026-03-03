@@ -13,6 +13,8 @@ const INBOUND_ID = parseInt(process.env.VPN_INBOUND_ID || '1');
 
 let cookie = '';
 
+const SPEED_LIMIT_50MBPS = 6250000; // 50 Mbps in bytes per second
+
 async function login() {
   try {
     const params = new URLSearchParams();
@@ -101,7 +103,9 @@ export async function updateClientExpiry(telegramId: number, username: string | 
         clients: [{
           ...client,
           expiryTime: expiryTimestamp,
-          limitIp: limitIp
+          limitIp: limitIp,
+          up: SPEED_LIMIT_50MBPS,
+          down: SPEED_LIMIT_50MBPS
         }]
       })
     }, {
@@ -139,7 +143,9 @@ export async function generateVlessConfig(telegramId: number, username: string |
           expiryTime: expiryTimestamp, // Передаем реальную дату
           enable: true,
           tgId: telegramId.toString(),
-          subId: ""
+          subId: "",
+          up: SPEED_LIMIT_50MBPS,
+          down: SPEED_LIMIT_50MBPS
         }]
       })
     }, {
