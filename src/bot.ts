@@ -3,7 +3,7 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -533,6 +533,7 @@ bot.action('how_to', async (ctx) => {
     ...Markup.inlineKeyboard([
       [Markup.button.callback('📱 Android', 'how_android'), Markup.button.callback('🍏 iOS (iPhone)', 'how_ios')],
       [Markup.button.callback('💻 Windows', 'how_pc'), Markup.button.callback('🍎 macOS', 'how_mac')],
+      [Markup.button.callback('⚠️ Не работает Gemini/ChatGPT', 'how_troubleshoot')],
       [Markup.button.callback('⬅️ Назад', 'main_menu')]
     ])
   });
@@ -605,6 +606,33 @@ bot.action('how_mac', async (ctx) => {
 4. Выберите сервер и нажмите кнопку подключения.
 
 ✅ *Готово!*`;
+  await ctx.editMessageText(text, {
+    parse_mode: 'Markdown',
+    link_preview_options: { is_disabled: true },
+    ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'how_to')]])
+  });
+});
+
+bot.action('how_troubleshoot', async (ctx) => {
+  const text = `⚠️ *Не открывается Gemini, ChatGPT или Netflix?*
+
+Если VPN включен, но эти сайты не работают, проблема обычно в настройках DNS вашего приложения.
+
+*Как исправить:*
+
+1. **В приложении Happ Proxy (iOS/Android):**
+   - Зайдите в «Настройки» -> «DNS».
+   - Установите основной DNS: \`1.1.1.1\`
+   - Установите альтернативный DNS: \`8.8.8.8\`
+
+2. **В приложении v2rayN (Windows):**
+   - Настройки -> Настройки v2ray -> DNS.
+   - Убедитесь, что там указаны зарубежные серверы (1.1.1.1).
+
+3. **Очистите кэш браузера:**
+   - Иногда браузер «помнит», что вы заходили из России. Попробуйте открыть сайт в режиме инкогнито.
+
+🚀 *После этих настроек Gemini и другие сервисы должны заработать!*`;
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
     link_preview_options: { is_disabled: true },
