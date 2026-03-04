@@ -3,7 +3,7 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -770,19 +770,25 @@ bot.on('message', async (ctx) => {
 
     // Handle Promo Code Activation (User sends a message)
     if (!text.startsWith('/')) {
+      console.log(`[PROMO] User ${tgId} attempting to activate code: "${text}"`);
       const result = usePromoCode(tgId, text);
+      
       if (result === true) {
         const promo = getPromoCode(text);
+        console.log(`[PROMO] Success! User ${tgId} activated ${text} (+${promo.days} days)`);
         await ctx.reply(`✅ *Промокод активирован!*\n\nВам начислено *+${promo.days} дней* подписки. Спасибо!`, { parse_mode: 'Markdown' });
         return;
       } else if (result === 'ALREADY_USED') {
+        console.log(`[PROMO] Already used: User ${tgId}, Code ${text}`);
         await ctx.reply('❌ Вы уже активировали этот промокод.');
         return;
       } else if (result === 'EXHAUSTED') {
+        console.log(`[PROMO] Exhausted: Code ${text}`);
         await ctx.reply('❌ Лимит использований этого промокода исчерпан.');
         return;
       }
       
+      console.log(`[PROMO] Invalid code or regular message from ${tgId}: "${text}"`);
       // If it's not a promo code and not a command, delete and show menu
       try {
         await ctx.deleteMessage().catch(() => {});

@@ -77,7 +77,7 @@ export function createUser(telegramId: number, username: string | null, initialD
   
   const stmt = db.prepare(`
     INSERT INTO users (telegram_id, username, trial_started_at, subscription_ends_at, connection_limit)
-    VALUES (?, ?, ?, ?, 1)
+    VALUES (?, ?, ?, ?, 3)
   `);
   
   stmt.run(telegramId, username, now.toISOString(), trialEnds.toISOString());
@@ -156,11 +156,13 @@ export function createPromoCode(code: string, days: number, maxUses: number) {
 }
 
 export function getPromoCode(code: string) {
-  return db.prepare('SELECT * FROM promo_codes WHERE code = ?').get(code.toUpperCase()) as any;
+  const trimmedCode = code.trim().toUpperCase();
+  return db.prepare('SELECT * FROM promo_codes WHERE code = ?').get(trimmedCode) as any;
 }
 
 export function usePromoCode(telegramId: number, code: string) {
-  const promo = getPromoCode(code);
+  const trimmedCode = code.trim().toUpperCase();
+  const promo = getPromoCode(trimmedCode);
   if (!promo) return false;
 
   // Check if user already used it
