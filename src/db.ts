@@ -47,7 +47,12 @@ try {
 } catch (e) {}
 
 try {
-  db.exec("ALTER TABLE users ADD COLUMN connection_limit INTEGER DEFAULT 1");
+  db.exec("ALTER TABLE users ADD COLUMN connection_limit INTEGER DEFAULT 3");
+} catch (e) {}
+
+// Update existing users who have connection_limit = 1 to 3
+try {
+  db.exec("UPDATE users SET connection_limit = 3 WHERE connection_limit = 1");
 } catch (e) {}
 
 try {

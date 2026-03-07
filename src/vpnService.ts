@@ -101,7 +101,7 @@ export async function updateClientExpiry(telegramId: number, username: string | 
         clients: [{
           ...client,
           expiryTime: expiryTimestamp,
-          limitIp: limitIp
+          limitIp: limitIp > 0 ? limitIp + 2 : 0 // Add buffer for network switches
         }]
       })
     }, {
@@ -127,14 +127,29 @@ export async function generateVlessConfig(telegramId: number, username: string |
     let clientUuid = randomUUID();
     let isDuplicate = false;
 
+    const inboundResponse = await axios.get(`${PANEL_URL}panel/api/inbounds/get/${INBOUND_ID}`, {
+      headers: { 'Cookie': cookie },
+      httpsAgent: agent
+    });
+
+    const inbound = inboundResponse.data.obj;
+    if (!inbound) {
+      console.error('[VPN] Inbound not found before adding client');
+      return null;
+    }
+
+    const streamSettings = typeof inbound.streamSettings === 'string' ? JSON.parse(inbound.streamSettings) : inbound.streamSettings;
+    const security = streamSettings.security || 'none';
+    const flow = security === 'reality' ? 'xtls-rprx-vision' : '';
+
     const addResponse = await axios.post(`${PANEL_URL}panel/api/inbounds/addClient`, {
       id: INBOUND_ID,
       settings: JSON.stringify({
         clients: [{
           id: clientUuid,
-          flow: "",
+          flow: flow,
           email: email,
-          limitIp: limitIp,
+          limitIp: limitIp > 0 ? limitIp + 2 : 0, // Add buffer for network switches
           totalGB: 0,
           expiryTime: expiryTimestamp, // Передаем реальную дату
           enable: true,
@@ -159,19 +174,19 @@ export async function generateVlessConfig(telegramId: number, username: string |
       }
     }
 
-    const inboundResponse = await axios.get(`${PANEL_URL}panel/api/inbounds/get/${INBOUND_ID}`, {
+    const updatedInboundResponse = await axios.get(`${PANEL_URL}panel/api/inbounds/get/${INBOUND_ID}`, {
       headers: { 'Cookie': cookie },
       httpsAgent: agent
     });
 
-    const inbound = inboundResponse.data.obj;
-    if (!inbound) {
+    const updatedInbound = updatedInboundResponse.data.obj;
+    if (!updatedInbound) {
       console.error('[VPN] Inbound not found after adding client');
       return null;
     }
 
     if (isDuplicate) {
-      const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
+      const settings = typeof updatedInbound.settings === 'string' ? JSON.parse(updatedInbound.settings) : updatedInbound.settings;
       const existingClient = settings.clients?.find((c: any) => c.email === email);
       if (existingClient) {
         clientUuid = existingClient.id;
@@ -185,9 +200,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
       }
     }
 
-    const streamSettings = typeof inbound.streamSettings === 'string' ? JSON.parse(inbound.streamSettings) : inbound.streamSettings;
     const network = streamSettings.network || 'tcp';
-    const security = streamSettings.security || 'none';
     
     // Robust Reality settings extraction
     const reality = streamSettings?.realitySettings || streamSettings?.settings?.realitySettings || {};
@@ -196,7 +209,7 @@ export async function generateVlessConfig(telegramId: number, username: string |
     const publicKey = reality.publicKey || realityInner.publicKey || process.env.VPN_PUBLIC_KEY;
     const shortId = reality.shortIds?.[0] || realityInner.shortIds?.[0] || '';
     const serverName = reality.serverNames?.[0] || realityInner.serverNames?.[0] || 'google.com';
-    const spiderX = reality.spiderX || realityInner.spiderX || '%2F';
+    const spiderX = reality.spiderX || realityInner.spiderX || '/';
 
     if (!publicKey && security === 'reality') {
       console.error('[VPN] ERROR: Public Key (pbk) not found for Reality! Reality settings:', JSON.stringify(reality));
@@ -208,8 +221,33 @@ export async function generateVlessConfig(telegramId: number, username: string |
 
     let vlessLink = `vless://${clientUuid}@${host}:${port}?type=${network}&encryption=none&security=${security}`;
     
+    if (network === 'grpc') {
+      const grpcSettings = streamSettings?.grpcSettings || streamSettings?.settings?.grpcSettings || {};
+      const serviceName = grpcSettings.serviceName || '';
+      vlessLink += `&mode=multi&serviceName=${encodeURIComponent(serviceName)}`;
+    } else if (network === 'ws') {
+      const wsSettings = streamSettings?.wsSettings || streamSettings?.settings?.wsSettings || {};
+      const path = wsSettings.path || '/';
+      const wsHost = wsSettings.headers?.Host || '';
+      vlessLink += `&path=${encodeURIComponent(path)}`;
+      if (wsHost) vlessLink += `&host=${encodeURIComponent(wsHost)}`;
+    } else if (network === 'tcp') {
+      const tcpSettings = streamSettings?.tcpSettings || streamSettings?.settings?.tcpSettings || {};
+      if (tcpSettings.header?.type === 'http') {
+        vlessLink += `&headerType=http`;
+        const hostHeader = tcpSettings.header.request?.headers?.Host?.[0] || '';
+        if (hostHeader) vlessLink += `&host=${encodeURIComponent(hostHeader)}`;
+      }
+    }
+    
     if (security === 'reality') {
-      vlessLink += `&pbk=${publicKey}&fp=chrome&sni=${serverName}&sid=${shortId}&spx=${encodeURIComponent(spiderX)}`;
+      const decodedSpx = decodeURIComponent(spiderX);
+      vlessLink += `&pbk=${publicKey}&fp=chrome&sni=${serverName}&sid=${shortId}&spx=${encodeURIComponent(decodedSpx)}`;
+    } else if (security === 'tls') {
+      const tlsSettings = streamSettings?.tlsSettings || streamSettings?.settings?.tlsSettings || {};
+      const serverNameTls = tlsSettings.serverName || '';
+      if (serverNameTls) vlessLink += `&sni=${serverNameTls}`;
+      vlessLink += `&fp=chrome`;
     }
     
     vlessLink += `#ZenVPN_${email}`;
