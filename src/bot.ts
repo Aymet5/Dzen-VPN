@@ -3,7 +3,7 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode, updateZeroTrafficNotification } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry, getClientTraffic } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -13,7 +13,7 @@ const MAIN_MENU = Markup.inlineKeyboard([
   [Markup.button.callback('👤 Моя подписка', 'my_sub'), Markup.button.callback('📖 Инструкция', 'how_to')],
   [Markup.button.callback('💳 Купить подписку', 'buy_sub')],
   [Markup.button.callback('🎁 Пригласить друга', 'invite_friends')],
-  [Markup.button.url('💬 Поддержка', 'https://t.me/DzenSupport17')]
+  [Markup.button.url('💬 Поддержка', 'https://t.me/podder5')]
 ]);
 
 async function sendMainMenu(ctx: any, edit = false) {
