@@ -116,6 +116,33 @@ export async function updateClientExpiry(telegramId: number, username: string | 
   }
 }
 
+export async function getClientTraffic(telegramId: number, username: string | null): Promise<{ up: number, down: number } | null> {
+  if (!cookie) {
+    const loggedIn = await login();
+    if (!loggedIn) return null;
+  }
+
+  const email = `${username || 'user'}_${telegramId}`;
+
+  try {
+    const response = await axios.get(`${PANEL_URL}panel/api/inbounds/getClientTraffics/${email}`, {
+      headers: { 'Cookie': cookie },
+      httpsAgent: agent
+    });
+
+    if (response.data.success && response.data.obj) {
+      return {
+        up: response.data.obj.up || 0,
+        down: response.data.obj.down || 0
+      };
+    }
+    return null;
+  } catch (error: any) {
+    console.error('[VPN] Get Client Traffic Error:', error.message);
+    return null;
+  }
+}
+
 export async function generateVlessConfig(telegramId: number, username: string | null, expiryTimestamp: number = 0, limitIp: number = 1): Promise<string | null> {
   try {
     if (!cookie) {

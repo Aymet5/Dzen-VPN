@@ -1,9 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
 import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaService.ts';
-import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode } from './db.ts';
-import { generateVlessConfig, deleteClient, updateClientExpiry } from './vpnService.ts';
+import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode, updateZeroTrafficNotification } from './db.ts';
+import { generateVlessConfig, deleteClient, updateClientExpiry, getClientTraffic } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -554,7 +554,7 @@ bot.action('how_android', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
   const text = `🤖 *Инструкция для Android*
 
-1. Скачайте приложение *Happ Proxy* по кнопке ниже.
+1. Скачайте приложение *V2Ray Tun* по кнопке ниже.
 2. Скопируйте ваш ключ (VLESS-ссылку) из раздела "🚀 Получить VPN".
 3. Откройте приложение и добавьте конфиг через иконку *"+"* или *"Import"*.
 4. Нажмите на добавленный профиль и кнопку подключения.
@@ -565,7 +565,7 @@ bot.action('how_android', async (ctx) => {
     parse_mode: 'Markdown',
     link_preview_options: { is_disabled: true },
     ...Markup.inlineKeyboard([
-      [Markup.button.url('📥 Скачать Happ Proxy (Play Store)', 'https://play.google.com/store/apps/details?id=com.happproxy')],
+      [Markup.button.url('📥 Скачать V2Ray Tun (Play Store)', 'https://play.google.com/store/apps/details?id=com.v2raytun.android')],
       [Markup.button.callback('⬅️ Назад', 'how_to')]
     ])
   });
@@ -575,7 +575,7 @@ bot.action('how_ios', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
   const text = `🍏 *Инструкция для iOS (iPhone/iPad)*
 
-1. Установите приложение *Happ Proxy* по кнопке ниже.
+1. Установите приложение *V2Ray Tun* по кнопке ниже.
 2. Скопируйте ваш ключ (VLESS-ссылку).
 3. В приложении нажмите *"+"* -> *"Import from Clipboard"*.
 4. Выберите добавленный сервер и нажмите кнопку подключения (Connect).
@@ -586,7 +586,7 @@ bot.action('how_ios', async (ctx) => {
     parse_mode: 'Markdown',
     link_preview_options: { is_disabled: true },
     ...Markup.inlineKeyboard([
-      [Markup.button.url('📥 Скачать Happ Proxy (App Store)', 'https://apps.apple.com/us/app/happ-proxy-utility/id6504287215')],
+      [Markup.button.url('📥 Скачать V2Ray Tun (App Store)', 'https://apps.apple.com/ru/app/v2raytun/id6476628951')],
       [Markup.button.callback('⬅️ Назад', 'how_to')]
     ])
   });
@@ -596,7 +596,7 @@ bot.action('how_pc', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
   const text = `💻 *Инструкция для Windows*
 
-1. Скачайте приложение *Happ Proxy* для ПК по кнопке ниже.
+1. Скачайте приложение *v2rayN* для ПК по кнопке ниже.
 2. Установите и запустите приложение.
 3. Скопируйте ваш ключ (VLESS-ссылку) из раздела "🚀 Получить VPN".
 4. В приложении нажмите кнопку добавления конфига (обычно иконка "+" или "Import").
@@ -607,7 +607,7 @@ bot.action('how_pc', async (ctx) => {
     parse_mode: 'Markdown',
     link_preview_options: { is_disabled: true },
     ...Markup.inlineKeyboard([
-      [Markup.button.url('📥 Скачать Happ Proxy для Windows', 'https://www.happ.su/main')],
+      [Markup.button.url('📥 Скачать v2rayN для Windows', 'https://github.com/2dust/v2rayN/releases')],
       [Markup.button.callback('⬅️ Назад', 'how_to')]
     ])
   });
@@ -638,7 +638,7 @@ bot.action('how_troubleshoot', async (ctx) => {
 
 *Как исправить:*
 
-1. **В приложении Happ Proxy (iOS/Android):**
+1. **В приложении V2Ray Tun (iOS/Android):**
    - Зайдите в «Настройки» -> «DNS».
    - Установите основной DNS: \`1.1.1.1\`
    - Установите альтернативный DNS: \`8.8.8.8\`
@@ -862,13 +862,55 @@ async function checkExpirations() {
   }
 }
 
+async function checkZeroTraffic() {
+  const users = getAllUsers();
+  const now = new Date();
+
+  for (const user of users) {
+    if (user.zero_traffic_notification_sent === 1) continue;
+
+    const trialStarted = new Date(user.trial_started_at);
+    const diffMs = now.getTime() - trialStarted.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    // Check if 24 hours have passed since they got the key
+    if (diffHours >= 24) {
+      const traffic = await getClientTraffic(user.telegram_id, user.username);
+      
+      if (traffic) {
+        const totalTraffic = traffic.up + traffic.down;
+        
+        if (totalTraffic === 0) {
+          // Send help message
+          try {
+            const text = `👋 *Привет!*\n\nЯ заметил, что ты получил ключ для VPN, но еще ни разу не подключился.\n\nВозникли сложности с настройкой? Не переживай, это бывает! Вот подробные инструкции для твоего устройства:\n\n📱 *iOS (iPhone/iPad):*\n1. Скачай приложение V2Ray Tun из AppStore.\n2. Скопируй свой ключ из бота.\n3. Открой приложение, нажми "+" и выбери "Import from Clipboard".\n\n🤖 *Android:*\n1. Скачай приложение V2Ray Tun из Google Play.\n2. Скопируй свой ключ из бота.\n3. Открой приложение, нажми "+" и выбери "Импорт профиля из буфера обмена".\n\n💻 *Windows/Mac:*\nИспользуй приложение v2rayN или Nekoray.\n\nЕсли нужна помощь, просто напиши администратору!`;
+            
+            await bot.telegram.sendMessage(user.telegram_id, text, { 
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([[Markup.button.callback('🔑 Мой ключ', 'my_key')]])
+            });
+          } catch (e) {
+            console.error(`Failed to send zero traffic notification to ${user.telegram_id}`, e);
+          }
+        }
+        
+        // Mark as sent (or checked) so we don't bother them again
+        updateZeroTrafficNotification(user.telegram_id);
+      }
+    }
+  }
+}
+
 export function startBot() {
   bot.launch().then(() => {
     console.log('Bot started');
     // Start expiration checker every hour
     setInterval(checkExpirations, 60 * 60 * 1000);
-    // Initial check on start
+    // Start zero traffic checker every hour
+    setInterval(checkZeroTraffic, 60 * 60 * 1000);
+    // Initial checks on start
     checkExpirations();
+    checkZeroTraffic();
   });
 
   process.once('SIGINT', () => bot.stop('SIGINT'));

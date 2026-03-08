@@ -59,6 +59,10 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN last_3day_notification TEXT");
 } catch (e) {}
 
+try {
+  db.exec("ALTER TABLE users ADD COLUMN zero_traffic_notification_sent INTEGER DEFAULT 0");
+} catch (e) {}
+
 export interface User {
   id: number;
   telegram_id: number;
@@ -70,6 +74,7 @@ export interface User {
   last_expiration_notification: string | null;
   last_3day_notification: string | null;
   connection_limit: number;
+  zero_traffic_notification_sent: number;
 }
 
 export function getUser(telegramId: number): User | undefined {
@@ -148,6 +153,11 @@ export function update3DayNotification(telegramId: number) {
 export function updateConnectionLimit(telegramId: number, limit: number) {
   db.prepare('UPDATE users SET connection_limit = ? WHERE telegram_id = ?')
     .run(limit, telegramId);
+}
+
+export function updateZeroTrafficNotification(telegramId: number) {
+  db.prepare('UPDATE users SET zero_traffic_notification_sent = 1 WHERE telegram_id = ?')
+    .run(telegramId);
 }
 
 export function getAllUsers(): User[] {
