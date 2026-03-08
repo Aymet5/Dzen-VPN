@@ -220,6 +220,9 @@ export async function generateVlessConfig(telegramId: number, username: string |
     const host = new URL(PANEL_URL).hostname;
 
     let vlessLink = `vless://${clientUuid}@${host}:${port}?type=${network}&encryption=none&security=${security}`;
+    if (flow) {
+      vlessLink += `&flow=${flow}`;
+    }
     
     if (network === 'grpc') {
       const grpcSettings = streamSettings?.grpcSettings || streamSettings?.settings?.grpcSettings || {};
