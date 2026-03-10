@@ -50,6 +50,14 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN connection_limit INTEGER DEFAULT 3");
 } catch (e) {}
 
+try {
+  db.exec("ALTER TABLE users ADD COLUMN total_spent INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN vpn_config TEXT");
+} catch (e) {}
+
 // Update existing users who have connection_limit = 1 to 3
 try {
   db.exec("UPDATE users SET connection_limit = 3 WHERE connection_limit = 1");
@@ -118,7 +126,7 @@ export function updateSubscription(telegramId: number, monthsToAdd: number, amou
   
   baseDate.setMonth(baseDate.getMonth() + monthsToAdd);
   
-  db.prepare('UPDATE users SET subscription_ends_at = ?, total_spent = total_spent + ? WHERE telegram_id = ?')
+  db.prepare('UPDATE users SET subscription_ends_at = ?, total_spent = COALESCE(total_spent, 0) + ? WHERE telegram_id = ?')
     .run(baseDate.toISOString(), amountPaid, telegramId);
 }
 

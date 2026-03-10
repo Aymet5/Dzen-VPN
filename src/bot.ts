@@ -3,7 +3,7 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode, updateZeroTrafficNotification } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry, getClientTraffic } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -13,7 +13,7 @@ const MAIN_MENU = Markup.inlineKeyboard([
   [Markup.button.callback('👤 Моя подписка', 'my_sub'), Markup.button.callback('📖 Инструкция', 'how_to')],
   [Markup.button.callback('💳 Купить подписку', 'buy_sub')],
   [Markup.button.callback('🎁 Пригласить друга', 'invite_friends')],
-  [Markup.button.url('💬 Поддержка', 'https://t.me/DzenSupport17')]
+  [Markup.button.url('💬 Поддержка', 'https://t.me/podder5')]
 ]);
 
 async function sendMainMenu(ctx: any, edit = false) {
@@ -93,14 +93,14 @@ bot.command('admin', async (ctx) => {
     const endsAt = new Date(u.subscription_ends_at);
     if (endsAt > now) {
       activeSubs++;
-      if (u.total_spent === 0) {
+      if (!u.total_spent || u.total_spent === 0) {
         trialUsers++;
       } else {
         paidUsers++;
         if (u.connection_limit === 5) familyUsers++;
       }
     }
-    totalRevenue += u.total_spent;
+    totalRevenue += (u.total_spent || 0);
   });
 
   const statsText = `📊 *Админ-панель ДзенVPN*
@@ -218,14 +218,14 @@ bot.action('admin_back', async (ctx) => {
     const endsAt = new Date(u.subscription_ends_at);
     if (endsAt > now) {
       activeSubs++;
-      if (u.total_spent === 0) {
+      if (!u.total_spent || u.total_spent === 0) {
         trialUsers++;
       } else {
         paidUsers++;
         if (u.connection_limit === 5) familyUsers++;
       }
     }
-    totalRevenue += u.total_spent;
+    totalRevenue += (u.total_spent || 0);
   });
   const statsText = `📊 *Админ-панель ДзенVPN*
 
@@ -256,7 +256,7 @@ bot.action('download_csv', async (ctx) => {
   let csv = 'ID;Telegram ID;Username;Trial Started;Subscription Ends;Total Spent (RUB)\n';
   
   users.forEach(u => {
-    csv += `${u.id};${u.telegram_id};${u.username || ''};${u.trial_started_at};${u.subscription_ends_at};${u.total_spent}\n`;
+    csv += `${u.id};${u.telegram_id};${u.username || ''};${u.trial_started_at};${u.subscription_ends_at};${u.total_spent || 0}\n`;
   });
 
   const buffer = Buffer.from(csv, 'utf-8');
@@ -596,18 +596,18 @@ bot.action('how_pc', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
   const text = `💻 *Инструкция для Windows*
 
-1. Скачайте приложение *v2rayN* для ПК по кнопке ниже.
-2. Установите и запустите приложение.
-3. Скопируйте ваш ключ (VLESS-ссылку) из раздела "🚀 Получить VPN".
-4. В приложении нажмите кнопку добавления конфига (обычно иконка "+" или "Import").
-5. Нажмите кнопку подключения.
+1. Скачайте [v2rayN-With-Core.zip](https://github.com/2dust/v2rayN/releases/download/7.7.1/v2rayN-With-Core.zip) и распакуйте его.
+2. Запустите *v2rayN.exe*.
+3. Скопируйте ваш ключ (VLESS-ссылку) из бота.
+4. В программе нажмите **"Серверы"** -> **"Импорт из буфера обмена"**.
+5. **ВАЖНО:** В нижней панели Windows нажмите правой кнопкой на иконку v2rayN -> **"Системный прокси"** -> **"Установить системный прокси"** (иконка станет красной).
 
-✅ *Готово!*`;
+✅ *Готово! Теперь весь ваш трафик идет через VPN.*`;
   await ctx.editMessageText(text, {
     parse_mode: 'Markdown',
     link_preview_options: { is_disabled: true },
     ...Markup.inlineKeyboard([
-      [Markup.button.url('📥 Скачать v2rayN для Windows', 'https://github.com/2dust/v2rayN/releases')],
+      [Markup.button.url('📥 Скачать v2rayN (GitHub)', 'https://github.com/2dust/v2rayN/releases')],
       [Markup.button.callback('⬅️ Назад', 'how_to')]
     ])
   });
