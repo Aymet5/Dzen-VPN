@@ -211,7 +211,13 @@ async function startServer() {
   });
 
   // Start Telegram Bot
-  startBot();
+  console.log('[Server] Starting Telegram Bot...');
+  try {
+    startBot();
+    console.log('[Server] Bot start function called successfully');
+  } catch (e) {
+    console.error('[Server] Failed to call startBot:', e);
+  }
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

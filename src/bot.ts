@@ -3,17 +3,23 @@ import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaServi
 import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode, updateZeroTrafficNotification, incrementReferralCount, getAllPlans } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry, getClientTraffic } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
+
+// Global error handler
+bot.catch((err: any, ctx: any) => {
+  console.error(`[Bot] Error for update ${ctx.update.update_id}:`, err);
+  ctx.reply('❌ Произошла ошибка при выполнении команды. Пожалуйста, попробуйте позже или обратитесь в поддержку.').catch(() => {});
+});
 
 const MAIN_MENU = Markup.inlineKeyboard([
   [Markup.button.callback('🚀 Получить VPN', 'get_vpn')],
   [Markup.button.callback('👤 Моя подписка', 'my_sub'), Markup.button.callback('📖 Инструкция', 'how_to')],
   [Markup.button.callback('💳 Купить подписку', 'buy_sub')],
   [Markup.button.callback('🎁 Пригласить друга', 'invite_friends')],
-  [Markup.button.url('💬 Поддержка', 'https://t.me/DzenSupport17')]
+  [Markup.button.url('💬 Поддержка', 'https://t.me/podder5')]
 ]);
 
 async function sendMainMenu(ctx: any, edit = false) {
@@ -35,6 +41,7 @@ const TEST_YOOKASSA_TOKEN = process.env.TEST_YOOKASSA_TOKEN || '381764678:TEST:1
 bot.start(async (ctx) => {
   const tgId = ctx.from.id;
   const username = ctx.from.username || null;
+  console.log(`[Bot] /start called by user ${tgId} (@${username})`);
   const startPayload = ctx.startPayload;
   
   let user = getUser(tgId);
@@ -889,8 +896,9 @@ async function checkZeroTraffic() {
 }
 
 export function startBot() {
+  console.log('[Bot] Launching...');
   bot.launch().then(() => {
-    console.log('Bot started');
+    console.log('[Bot] Started successfully');
     // Start expiration checker every hour
     setInterval(checkExpirations, 60 * 60 * 1000);
     // Start zero traffic checker every hour
@@ -898,6 +906,9 @@ export function startBot() {
     // Initial checks on start
     checkExpirations();
     checkZeroTraffic();
+  }).catch((err) => {
+    console.error('[Bot] Critical error during launch:', err);
+    // If it's a token error, it will be logged here
   });
 
   process.once('SIGINT', () => bot.stop('SIGINT'));

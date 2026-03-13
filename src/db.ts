@@ -15,7 +15,10 @@ db.exec(`
     total_spent INTEGER DEFAULT 0,
     last_expiration_notification TEXT,
     last_3day_notification TEXT,
-    connection_limit INTEGER DEFAULT 1
+    connection_limit INTEGER DEFAULT 1,
+    is_blocked INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    zero_traffic_notification_sent INTEGER DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS promo_codes (
@@ -94,6 +97,18 @@ try {
 // Update existing users who have connection_limit = 1 to 3
 try {
   db.exec("UPDATE users SET connection_limit = 3 WHERE connection_limit = 1");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN zero_traffic_notification_sent INTEGER DEFAULT 0");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0");
 } catch (e) {}
 
 try {
