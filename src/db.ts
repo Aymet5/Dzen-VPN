@@ -39,40 +39,7 @@ db.exec(`
     status TEXT DEFAULT 'pending',
     created_at TEXT
   );
-
-  CREATE TABLE IF NOT EXISTS plans (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    months INTEGER,
-    price INTEGER,
-    description TEXT,
-    connection_limit INTEGER DEFAULT 1
-  );
 `);
-
-// Migrations for existing databases
-try {
-  db.exec("ALTER TABLE plans ADD COLUMN description TEXT");
-} catch (e) {}
-try {
-  db.exec("ALTER TABLE plans ADD COLUMN connection_limit INTEGER DEFAULT 1");
-} catch (e) {}
-
-// Initialize default plans if they don't exist
-const existingPlans = db.prepare('SELECT COUNT(*) as count FROM plans').get() as { count: number };
-if (existingPlans.count === 0) {
-  const defaultPlans = [
-    { id: '1', name: '1 месяц', months: 1, price: 250, description: 'Базовый доступ на 30 дней', connection_limit: 1 },
-    { id: '3', name: '3 месяца', months: 3, price: 650, description: 'Экономия 15% - Квартальный доступ', connection_limit: 1 },
-    { id: '6', name: '6 месяцев', months: 6, price: 1200, description: 'Экономия 25% - Полгода свободы', connection_limit: 1 },
-    { id: '12', name: '12 месяцев', months: 12, price: 2200, description: 'Экономия 33% - Целый год без границ', connection_limit: 1 },
-    { id: 'family', name: 'Семейная (5 чел)', months: 1, price: 300, description: 'Доступ для 5 устройств одновременно', connection_limit: 5 },
-  ];
-  const insertPlan = db.prepare('INSERT INTO plans (id, name, months, price, description, connection_limit) VALUES (?, ?, ?, ?, ?, ?)');
-  for (const plan of defaultPlans) {
-    insertPlan.run(plan.id, plan.name, plan.months, plan.price, plan.description, plan.connection_limit);
-  }
-}
 
 // Migrations for existing databases
 try {
@@ -104,10 +71,6 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN zero_traffic_notification_sent INTEGER DEFAULT 0");
 } catch (e) {}
 
-try {
-  db.exec("ALTER TABLE users ADD COLUMN referral_count INTEGER DEFAULT 0");
-} catch (e) {}
-
 export interface User {
   id: number;
   telegram_id: number;
@@ -120,7 +83,6 @@ export interface User {
   last_3day_notification: string | null;
   connection_limit: number;
   zero_traffic_notification_sent: number;
-  referral_count: number;
 }
 
 export function getUser(telegramId: number): User | undefined {
@@ -206,11 +168,6 @@ export function updateZeroTrafficNotification(telegramId: number) {
     .run(telegramId);
 }
 
-export function incrementReferralCount(telegramId: number) {
-  db.prepare('UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE telegram_id = ?')
-    .run(telegramId);
-}
-
 export function getAllUsers(): User[] {
   return db.prepare('SELECT * FROM users').all() as User[];
 }
@@ -255,45 +212,4 @@ export function getAllPromoCodes() {
 export function deletePromoCode(code: string) {
   db.prepare('DELETE FROM promo_codes WHERE code = ?').run(code.toUpperCase());
   db.prepare('DELETE FROM used_promos WHERE promo_code = ?').run(code.toUpperCase());
-}
-
-// Plan Management
-export function getAllPlans() {
-  return db.prepare('SELECT * FROM plans ORDER BY months ASC').all() as any[];
-}
-
-export function updatePlanPrice(id: string, price: number) {
-  db.prepare('UPDATE plans SET price = ? WHERE id = ?').run(price, id);
-}
-
-export function blockUser(tgId: number, blocked: boolean) {
-  return db.prepare('UPDATE users SET is_blocked = ? WHERE telegram_id = ?').run(blocked ? 1 : 0, tgId);
-}
-
-export function extendSubscription(tgId: number, days: number) {
-  const user = getUser(tgId);
-  if (!user) return null;
-
-  const now = new Date();
-  let currentEndsAt = new Date(user.subscription_ends_at);
-  
-  if (currentEndsAt < now) {
-    currentEndsAt = now;
-  }
-
-  currentEndsAt.setDate(currentEndsAt.getDate() + days);
-  const newEndsAt = currentEndsAt.toISOString();
-
-  return db.prepare('UPDATE users SET subscription_ends_at = ? WHERE telegram_id = ?').run(newEndsAt, tgId);
-}
-
-// Payment History
-export function getAllPayments() {
-  return db.prepare(`
-    SELECT p.*, u.username 
-    FROM pending_payments p 
-    LEFT JOIN users u ON p.telegram_id = u.telegram_id 
-    WHERE p.status = 'succeeded' 
-    ORDER BY p.created_at DESC
-  `).all() as any[];
 }
