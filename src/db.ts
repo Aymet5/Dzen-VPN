@@ -71,6 +71,10 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN zero_traffic_notification_sent INTEGER DEFAULT 0");
 } catch (e) {}
 
+try {
+  db.exec("ALTER TABLE users ADD COLUMN referral_count INTEGER DEFAULT 0");
+} catch (e) {}
+
 export interface User {
   id: number;
   telegram_id: number;
@@ -83,6 +87,7 @@ export interface User {
   last_3day_notification: string | null;
   connection_limit: number;
   zero_traffic_notification_sent: number;
+  referral_count: number;
 }
 
 export function getUser(telegramId: number): User | undefined {
@@ -165,6 +170,11 @@ export function updateConnectionLimit(telegramId: number, limit: number) {
 
 export function updateZeroTrafficNotification(telegramId: number) {
   db.prepare('UPDATE users SET zero_traffic_notification_sent = 1 WHERE telegram_id = ?')
+    .run(telegramId);
+}
+
+export function incrementReferralCount(telegramId: number) {
+  db.prepare('UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE telegram_id = ?')
     .run(telegramId);
 }
 

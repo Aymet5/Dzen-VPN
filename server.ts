@@ -1,7 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { startBot, bot } from "./src/bot.ts";
-import { getPendingPayment, updatePaymentStatus, updateSubscription, getUser } from "./src/db.ts";
+import { getPendingPayment, updatePaymentStatus, updateSubscription, getUser, getAllUsers } from "./src/db.ts";
 import { updateClientExpiry } from "./src/vpnService.ts";
 
 async function startServer() {
@@ -55,6 +55,20 @@ async function startServer() {
   // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // Admin Panel API
+  app.get("/api/admin/users", (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader !== "Bearer Solbon5796+-") {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const users = getAllUsers();
+      res.json(users);
+    } catch (e) {
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   // Start Telegram Bot

@@ -1,9 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
 import { createYookassaPayment, getYookassaPaymentStatus } from './yookassaService.ts';
-import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode, updateZeroTrafficNotification } from './db.ts';
+import { getUser, createUser, updateSubscription, updateVpnConfig, getAllUsers, createPendingPayment, getPendingPayment, updatePaymentStatus, updateExpirationNotification, updateConnectionLimit, addDaysToUser, update3DayNotification, createPromoCode, usePromoCode, getPromoCode, getAllPromoCodes, deletePromoCode, updateZeroTrafficNotification, incrementReferralCount } from './db.ts';
 import { generateVlessConfig, deleteClient, updateClientExpiry, getClientTraffic } from './vpnService.ts';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfM';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8208808548:AAGYjjNDU79JP-0TRUxv0HuEfKBchlNVAfX';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '5446101221').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 const adminStates: Record<number, { mode: string }> = {};
 export const bot = new Telegraf(BOT_TOKEN);
@@ -57,6 +57,7 @@ bot.start(async (ctx) => {
         if (inviter) {
           initialDays = 14; // 7 standard + 7 bonus
           addDaysToUser(inviterId, 7);
+          incrementReferralCount(inviterId);
           try {
             await bot.telegram.sendMessage(inviterId, `🎁 *У вас новый реферал!*\n\nВаша подписка продлена на *+7 дней*. Спасибо за приглашение!`, { parse_mode: 'Markdown' });
           } catch (e) {}
@@ -253,10 +254,10 @@ bot.action('download_csv', async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return;
 
   const users = getAllUsers();
-  let csv = 'ID;Telegram ID;Username;Trial Started;Subscription Ends;Total Spent (RUB)\n';
+  let csv = 'ID;Telegram ID;Username;Trial Started;Subscription Ends;Total Spent (RUB);Referrals\n';
   
   users.forEach(u => {
-    csv += `${u.id};${u.telegram_id};${u.username || ''};${u.trial_started_at};${u.subscription_ends_at};${u.total_spent || 0}\n`;
+    csv += `${u.id};${u.telegram_id};${u.username || ''};${u.trial_started_at};${u.subscription_ends_at};${u.total_spent || 0};${u.referral_count || 0}\n`;
   });
 
   const buffer = Buffer.from(csv, 'utf-8');
