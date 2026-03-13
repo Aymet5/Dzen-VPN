@@ -3,22 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import { startBot, bot } from "./src/bot.ts";
-import { 
-  getPendingPayment, 
-  updatePaymentStatus, 
-  updateSubscription, 
-  getUser, 
-  getAllUsers,
-  getAllPlans,
-  updatePlanPrice,
-  getAllPayments,
-  updateConnectionLimit,
-  blockUser,
-  extendSubscription,
-  getAllPromoCodes,
-  createPromoCode,
-  deletePromoCode
-} from "./src/db.ts";
+import { getPendingPayment, updatePaymentStatus, updateSubscription, getUser, getAllUsers } from "./src/db.ts";
 import { updateClientExpiry } from "./src/vpnService.ts";
 
 async function startServer() {
@@ -48,18 +33,22 @@ async function startServer() {
         updatePaymentStatus(payment.id, 'succeeded');
         
         const { telegram_id, plan_id, amount } = pending;
-        const plans = getAllPlans();
-        const plan = plans.find(p => p.id === plan_id);
+        const SUBSCRIPTION_PLANS = [
+          { id: '1', months: 1 },
+          { id: '3', months: 3 },
+          { id: '6', months: 6 },
+          { id: '12', months: 12 },
+        ];
+        const plan = SUBSCRIPTION_PLANS.find(p => p.id === plan_id);
 
         if (plan) {
           updateSubscription(telegram_id, plan.months, amount);
-          updateConnectionLimit(telegram_id, plan.connection_limit || 1);
           
           // Sync with panel
           const user = getUser(telegram_id);
           if (user && user.vpn_config) {
             const expiryTimestamp = new Date(user.subscription_ends_at).getTime();
-            await updateClientExpiry(telegram_id, user.username, expiryTimestamp, user.connection_limit);
+            await updateClientExpiry(telegram_id, user.username, expiryTimestamp);
           }
 
           // Notify user
@@ -93,131 +82,8 @@ async function startServer() {
     }
   });
 
-  app.get("/api/admin/plans", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== "Bearer Solbon5796+-") {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    res.json(getAllPlans());
-  });
-
-  app.post("/api/admin/plans/update", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== "Bearer Solbon5796+-") {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const { id, price } = req.body;
-    if (!id || price === undefined) {
-      return res.status(400).json({ error: "Missing id or price" });
-    }
-    updatePlanPrice(id, Number(price));
-    res.json({ success: true });
-  });
-
-  app.post("/api/admin/users/block", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== "Bearer Solbon5796+-") {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const { telegram_id, blocked } = req.body;
-    if (!telegram_id) {
-      return res.status(400).json({ error: "Missing telegram_id" });
-    }
-    blockUser(telegram_id, blocked);
-    res.json({ success: true });
-  });
-
-  app.post("/api/admin/users/extend", async (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== "Bearer Solbon5796+-") {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const { telegram_id, days } = req.body;
-    if (!telegram_id || !days) {
-      return res.status(400).json({ error: "Missing telegram_id or days" });
-    }
-    extendSubscription(telegram_id, Number(days));
-    
-    // Sync with panel
-    const user = getUser(telegram_id);
-    if (user && user.vpn_config) {
-      const expiryTimestamp = new Date(user.subscription_ends_at).getTime();
-      await updateClientExpiry(telegram_id, user.username, expiryTimestamp, user.connection_limit);
-    }
-    
-    res.json({ success: true });
-  });
-
-  app.post("/api/admin/broadcast", async (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== "Bearer Solbon5796+-") {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const { message } = req.body;
-    if (!message) {
-      return res.status(400).json({ error: "Missing message" });
-    }
-    
-    const users = getAllUsers();
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const user of users) {
-      try {
-        await bot.telegram.sendMessage(user.telegram_id, message, { parse_mode: 'Markdown' });
-        successCount++;
-      } catch (e) {
-        failCount++;
-      }
-    }
-    
-    res.json({ success: true, successCount, failCount });
-  });
-
-  app.get("/api/admin/payments", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== "Bearer Solbon5796+-") {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    res.json(getAllPayments());
-  });
-
-  app.get("/api/admin/promos", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== "Bearer Solbon5796+-") {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    res.json(getAllPromoCodes());
-  });
-
-  app.post("/api/admin/promos/create", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== "Bearer Solbon5796+-") {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const { code, days, max_uses } = req.body;
-    createPromoCode(code, days, max_uses);
-    res.json({ success: true });
-  });
-
-  app.post("/api/admin/promos/delete", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== "Bearer Solbon5796+-") {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const { code } = req.body;
-    deletePromoCode(code);
-    res.json({ success: true });
-  });
-
   // Start Telegram Bot
-  console.log('[Server] Starting Telegram Bot...');
-  try {
-    startBot();
-    console.log('[Server] Bot start function called successfully');
-  } catch (e) {
-    console.error('[Server] Failed to call startBot:', e);
-  }
+  startBot();
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
