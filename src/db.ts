@@ -110,7 +110,7 @@ export function addDaysToUser(telegramId: number, days: number) {
   const currentEnds = new Date(user.subscription_ends_at);
   const baseDate = currentEnds > now ? currentEnds : now;
   
-  baseDate.setDate(baseDate.getDate() + days);
+  baseDate.setDate(baseDate.getDate() + Number(days));
   
   db.prepare('UPDATE users SET subscription_ends_at = ? WHERE telegram_id = ?')
     .run(baseDate.toISOString(), telegramId);
@@ -124,7 +124,7 @@ export function updateSubscription(telegramId: number, monthsToAdd: number, amou
   const currentEnds = new Date(user.subscription_ends_at);
   const baseDate = currentEnds > now ? currentEnds : now;
   
-  baseDate.setMonth(baseDate.getMonth() + monthsToAdd);
+  baseDate.setMonth(baseDate.getMonth() + Number(monthsToAdd));
   
   db.prepare('UPDATE users SET subscription_ends_at = ?, total_spent = COALESCE(total_spent, 0) + ? WHERE telegram_id = ?')
     .run(baseDate.toISOString(), amountPaid, telegramId);
